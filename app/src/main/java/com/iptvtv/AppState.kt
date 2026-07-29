@@ -74,7 +74,7 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
     fun isFav(c: Channel) = repo.isFavourite(c)
     fun toggleFav(c: Channel) { repo.toggleFavourite(c); channels = channels.toList() }
 
-    fun setHideGeo(v: Boolean) { hideGeo = v; repo.hideGeoBlocked = v }
+    fun toggleHideGeo() { hideGeo = !hideGeo; repo.hideGeoBlocked = hideGeo }
 
     fun addSource(name: String, url: String) {
         repo.addCustomSource(name, url)

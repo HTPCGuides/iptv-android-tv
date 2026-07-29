@@ -102,7 +102,7 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Options", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(16.dp))
-            TvItem(onClick = { vm.setHideGeo(!vm.hideGeo) }) {
+            TvItem(onClick = { vm.toggleHideGeo() }) {
                 Text(
                     if (vm.hideGeo) "☑  Hide geo-blocked channels" else "☐  Hide geo-blocked channels",
                     color = Color.White, fontSize = 14.sp,
