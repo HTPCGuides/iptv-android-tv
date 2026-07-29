@@ -1,0 +1,10 @@
+{
+  "project": "iptv-tv",
+  "tasks": [],
+  "activity": [],
+  "status": "active",
+  "headline": "Android TV IPTV player (M3U)",
+  "summary": "Android TV app that plays M3U/M3U8 playlists with Media3/ExoPlayer (HLS, TS, DASH). Ships with iptv-org free-to-air sources built in — UK (319), Denmark (153), US (1579), Sports (502) — plus 'Add playlist URL' for your own provider. D-pad UI: source tiles, group filters, search, channel list with lo",
+  "next": "Build + sideload to the TV device; test playback",
+  "updated": "2026-07-29T21:48:17.345Z"
+}
