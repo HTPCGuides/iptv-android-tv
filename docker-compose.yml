@@ -1,0 +1,21 @@
+services:
+  builder:
+    image: paddel-builder
+    container_name: iptv-tv-builder
+    working_dir: /work
+    entrypoint: []
+    command: ["sleep", "infinity"]
+    environment:
+      ADB_SERVER_SOCKET: tcp:wireguard:5037
+    volumes:
+      - /mnt/HC_Volume_106376375/projects/iptv-tv:/work
+      - gradle-cache:/home/builder/.gradle
+    networks: [web]
+    restart: unless-stopped
+
+volumes:
+  gradle-cache:
+
+networks:
+  web:
+    external: true
