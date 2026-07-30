@@ -37,24 +37,30 @@ class MainActivity : ComponentActivity() {
 private fun App() {
     val vm: IptvViewModel = viewModel()
     var route by remember { mutableStateOf(Route.HOME) }
+    // Where leaving the player goes back to — Home rows start playback too.
+    var playerReturn by remember { mutableStateOf(Route.CHANNELS) }
 
     BackHandler(enabled = route != Route.HOME) {
         route = when (route) {
-            Route.PLAYER -> { vm.stop(); Route.CHANNELS }
+            Route.PLAYER -> { vm.stop(); playerReturn }
             else -> Route.HOME
         }
     }
 
     when (route) {
-        Route.HOME -> HomeScreen(vm) { source ->
-            vm.open(source)
-            route = Route.CHANNELS
-        }
+        Route.HOME -> HomeScreen(
+            vm,
+            onOpen = { source ->
+                vm.open(source)
+                route = Route.CHANNELS
+            },
+            onPlay = { playerReturn = Route.HOME; route = Route.PLAYER },
+        )
         Route.CHANNELS -> ChannelsScreen(
             vm,
-            onPlay = { route = Route.PLAYER },
+            onPlay = { playerReturn = Route.CHANNELS; route = Route.PLAYER },
             onBack = { route = Route.HOME },
         )
-        Route.PLAYER -> PlayerScreen(vm) { vm.stop(); route = Route.CHANNELS }
+        Route.PLAYER -> PlayerScreen(vm) { vm.stop(); route = playerReturn }
     }
 }

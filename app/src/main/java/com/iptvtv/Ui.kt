@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -67,9 +71,13 @@ fun TvItem(
 }
 
 @Composable
-fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit) {
+fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit, onPlay: (Channel) -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().background(Bg).padding(28.dp)) {
+    LaunchedEffect(Unit) { vm.refreshHomeRows() }   // favourites/recents change while we're away
+    Column(
+        Modifier.fillMaxSize().background(Bg)
+            .verticalScroll(rememberScrollState()).padding(28.dp),
+    ) {
         Text("📺 IPTV TV", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Text("Free-to-air channels from iptv-org — plus your own playlists.",
             color = Muted, fontSize = 14.sp)
@@ -106,6 +114,19 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit) {
             }
         }
 
+        if (vm.favChannels.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            Text("★ Favourites", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            ChannelRow(vm.favChannels, vm, onPlay)
+        }
+        if (vm.recentChannels.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            Text("🕒 Recently watched", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            ChannelRow(vm.recentChannels, vm, onPlay)
+        }
+
         Spacer(Modifier.height(24.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Options", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -122,6 +143,32 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit) {
             color = Muted, fontSize = 12.sp)
 
         if (showAdd) AddPlaylistDialog(onAdd = { n, u -> vm.addSource(n, u); showAdd = false }, onCancel = { showAdd = false })
+    }
+}
+
+/** Compact horizontal channel tiles for the Home favourites / recents rows. */
+@Composable
+private fun ChannelRow(list: List<Channel>, vm: IptvViewModel, onPlay: (Channel) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        items(list) { c ->
+            TvItem(onClick = { vm.play(c, list); onPlay(c) }, modifier = Modifier.width(200.dp).height(72.dp)) {
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    if (c.logo != null) {
+                        AsyncImage(model = c.logo, contentDescription = null,
+                            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(6.dp)))
+                    } else {
+                        Box(Modifier.size(36.dp).clip(RoundedCornerShape(6.dp)).background(Bg),
+                            contentAlignment = Alignment.Center) { Text("📺", fontSize = 15.sp) }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(c.clean, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        c.quality?.let { Text(it, color = Muted, fontSize = 11.sp) }
+                    }
+                }
+            }
+        }
     }
 }
 

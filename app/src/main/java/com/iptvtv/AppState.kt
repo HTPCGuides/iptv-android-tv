@@ -32,6 +32,33 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
     /** Observable mirror of the persisted favourites — prefs alone can't drive recomposition. */
     private var favs by mutableStateOf(repo.favourites().toSet())
 
+    /** Favourites / recents resolved to real channels for the Home rows. */
+    var favChannels by mutableStateOf<List<Channel>>(emptyList()); private set
+    var recentChannels by mutableStateOf<List<Channel>>(emptyList()); private set
+
+    init { refreshHomeRows() }
+
+    /**
+     * Resolve the stored "sourceId|url" keys against the (cached) playlists they
+     * came from. Sources that were removed are skipped silently.
+     */
+    fun refreshHomeRows() {
+        val favKeys = repo.favourites()
+        val recentKeys = repo.recents()
+        if (favKeys.isEmpty() && recentKeys.isEmpty()) {
+            favChannels = emptyList(); recentChannels = emptyList(); return
+        }
+        val wanted = (favKeys + recentKeys).map { it.substringBefore('|') }.toSet()
+        val have = sources.filter { it.id in wanted }
+        viewModelScope.launch {
+            val byKey = withContext(Dispatchers.IO) {
+                have.flatMap { s -> runCatching { repo.load(s) }.getOrDefault(emptyList()) }
+            }.associateBy { it.key }
+            favChannels = favKeys.mapNotNull { byKey[it] }.sortedBy { it.clean.lowercase() }
+            recentChannels = recentKeys.mapNotNull { byKey[it] }.take(10)
+        }
+    }
+
     /** All groups present in the loaded source, most-populated first. */
     val groups: List<String>
         get() = channels.flatMap { it.groups }.groupingBy { it }.eachCount().entries

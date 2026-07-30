@@ -7,14 +7,18 @@
     },
     {
       "title": "Build debug APK in builder container",
-      "state": "doing"
+      "state": "done"
     },
     {
       "title": "Install and launch on OnePlus 10",
-      "state": "todo"
+      "state": "done"
     }
   ],
   "activity": [
+    {
+      "at": "2026-07-30T00:10:07.367Z",
+      "text": "Committed f0eb81b: 8 device-verified bug fixes + builder compose stack (3cd4bb9)"
+    },
     {
       "at": "2026-07-29T23:11:27.011Z",
       "text": "Paired + connected OnePlus 10 (NE2215) at 10.13.13.70:5555; builder container up; assembleDebug running"
@@ -24,9 +28,9 @@
       "text": "adb-keeper up and healthy after user rebuilt it; phone 10.13.13.64:5555 unreachable (connect timeout) — waiting for tunnel/wireless-debugging on the phone"
     }
   ],
-  "status": "active",
-  "headline": "Overnight device test done — 7 bugs found, fixes building",
-  "summary": "Tested on OnePlus 10: playback (HLS), zapping, search, groups, geo filter, custom playlists, persistence all verified working. Found+fixing: favourites unreachable, custom playlists unremovable, M3U comma-title bug, semicolon group soup, screen sleeps during playback, non-immersive player, ambiguous",
-  "next": "Verify fixed build on device, commit",
-  "updated": "2026-07-29T23:47:53.971Z"
+  "status": "done",
+  "headline": "Overnight test+fix pass complete — 8 bugs fixed, verified on OnePlus 10",
+  "summary": "Full on-device test of the M3U player on the OnePlus 10 over adb/WireGuard. Verified: HLS playback, zapping, search, group+geo filters, custom playlists, favourites, persistence, error states. Found and fixed 8 bugs (favourites unobservable+untogglable, unremovable custom playlists, M3U comma parsin",
+  "next": "Optional: sideload on the Galaxy Tab / OnePlus Pad or a real Android TV; favourites/recents rows on Home would be a nice follow-up",
+  "updated": "2026-07-30T00:10:07.368Z"
 }
