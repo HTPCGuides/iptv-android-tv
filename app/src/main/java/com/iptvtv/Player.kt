@@ -29,7 +29,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -88,9 +91,18 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
         delay(4000)
         showInfo = false
     }
+    // Immersive playback: hide status/nav bars, restore them when leaving the player.
+    val view = LocalView.current
     DisposableEffect(Unit) {
         focus.requestFocus()
-        onDispose { player.release() }
+        val window = (view.context as? android.app.Activity)?.window
+        val bars = window?.let { WindowInsetsControllerCompat(it, view) }
+        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars?.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose {
+            bars?.show(WindowInsetsCompat.Type.systemBars())
+            player.release()
+        }
     }
 
     Box(
@@ -109,7 +121,13 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { c -> PlayerView(c).apply { useController = false; this.player = player } },
+            factory = { c ->
+                PlayerView(c).apply {
+                    useController = false
+                    keepScreenOn = true   // live TV: never let the screen sleep mid-stream
+                    this.player = player
+                }
+            },
         )
 
         if (buffering && error == null) {
@@ -149,7 +167,7 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
                     Text(if (vm.isFav(channel)) "★ favourite" else "", color = Accent, fontSize = 13.sp)
                 }
                 Spacer(Modifier.height(4.dp))
-                Text("${channel.group}   ·   ↑↓ change channel   ·   OK info   ·   Back to list",
+                Text("${channel.groups.joinToString(" · ")}   ·   ↑↓ change channel   ·   OK info   ·   Back to list",
                     color = Muted, fontSize = 13.sp)
             }
         }

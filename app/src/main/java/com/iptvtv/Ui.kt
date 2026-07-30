@@ -79,11 +79,19 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit) {
         Spacer(Modifier.height(10.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(vm.sources) { s ->
-                TvItem(onClick = { onOpen(s) }, modifier = Modifier.width(210.dp).height(112.dp)) {
-                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-                        Text(s.emoji, fontSize = 30.sp)
-                        Text(s.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text(if (s.builtIn) "iptv-org" else "custom playlist", color = Muted, fontSize = 11.sp)
+                Column {
+                    TvItem(onClick = { onOpen(s) }, modifier = Modifier.width(210.dp).height(112.dp)) {
+                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
+                            Text(s.emoji, fontSize = 30.sp)
+                            Text(s.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(if (s.builtIn) "iptv-org" else "custom playlist", color = Muted, fontSize = 11.sp)
+                        }
+                    }
+                    if (!s.builtIn) {
+                        Spacer(Modifier.height(6.dp))
+                        TvItem(onClick = { vm.removeSource(s) }) {
+                            Text("✕ Remove", color = Muted, fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -211,13 +219,18 @@ fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> U
                             Column(Modifier.weight(1f)) {
                                 Text(c.clean, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                                 Row {
-                                    Text(c.group, color = Muted, fontSize = 12.sp)
+                                    Text(c.groups.joinToString(" · "), color = Muted, fontSize = 12.sp)
                                     c.quality?.let { Text("  ·  $it", color = Muted, fontSize = 12.sp) }
                                     if (c.geoBlocked) Text("  ·  🌍 geo-blocked", color = Color(0xFFFBBF24), fontSize = 12.sp)
                                     if (c.partTime) Text("  ·  ⏱ part-time", color = Muted, fontSize = 12.sp)
                                 }
                             }
-                            if (vm.isFav(c)) Text("★", color = Accent, fontSize = 20.sp)
+                            TvItem(onClick = { vm.toggleFav(c) }) {
+                                Text(
+                                    if (vm.isFav(c)) "★" else "☆",
+                                    color = if (vm.isFav(c)) Accent else Muted, fontSize = 20.sp,
+                                )
+                            }
                         }
                     }
                 }

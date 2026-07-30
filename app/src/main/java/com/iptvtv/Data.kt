@@ -23,6 +23,9 @@ data class Channel(
             .replace(Regex("""\s*\(\d+p\)( \(HEVC\))?"""), "").trim()
     val quality: String? get() = Regex("""\((\d+p)\)""").find(name)?.groupValues?.get(1)
     val key get() = "$sourceId|$url"
+    /** iptv-org packs several groups into one attribute ("Comedy;Movies;Sports"). */
+    val groups: List<String>
+        get() = group.split(';').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("Other") }
 }
 
 /** A playlist source — the four built-ins, plus anything the user adds. */
@@ -54,7 +57,9 @@ object M3uParser {
             val line = raw.trim()
             when {
                 line.startsWith("#EXTINF", true) -> {
-                    val comma = line.indexOf(',')
+                    // The title comma must come after the last quoted attribute — attribute
+                    // values themselves may contain commas (group-title="News, Politics").
+                    val comma = line.indexOf(',', startIndex = line.lastIndexOf('"') + 1)
                     val head = if (comma >= 0) line.substring(0, comma) else line
                     val title = if (comma >= 0) line.substring(comma + 1).trim() else ""
                     val attrs = ATTR.findAll(head).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
@@ -91,7 +96,7 @@ class Repo(private val ctx: Context) {
     fun customSources(): List<Source> =
         (prefs.getString("custom", "") ?: "").split("\n").filter { it.isNotBlank() }.mapNotNull { row ->
             val p = row.split(SEP)
-            if (p.size >= 2) Source(id = "c_" + p[1].hashCode(), name = p[0], url = p[1], builtIn = false, emoji = "➕")
+            if (p.size >= 2) Source(id = "c_" + p[1].hashCode(), name = p[0], url = p[1], builtIn = false, emoji = "📃")
             else null
         }
 

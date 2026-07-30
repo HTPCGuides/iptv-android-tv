@@ -1,10 +1,32 @@
 {
   "project": "iptv-tv",
-  "tasks": [],
-  "activity": [],
+  "tasks": [
+    {
+      "title": "Pair OnePlus 10 over wireless adb",
+      "state": "done"
+    },
+    {
+      "title": "Build debug APK in builder container",
+      "state": "doing"
+    },
+    {
+      "title": "Install and launch on OnePlus 10",
+      "state": "todo"
+    }
+  ],
+  "activity": [
+    {
+      "at": "2026-07-29T23:11:27.011Z",
+      "text": "Paired + connected OnePlus 10 (NE2215) at 10.13.13.70:5555; builder container up; assembleDebug running"
+    },
+    {
+      "at": "2026-07-29T22:52:43.549Z",
+      "text": "adb-keeper up and healthy after user rebuilt it; phone 10.13.13.64:5555 unreachable (connect timeout) — waiting for tunnel/wireless-debugging on the phone"
+    }
+  ],
   "status": "active",
-  "headline": "Android TV IPTV player (M3U)",
-  "summary": "Android TV app that plays M3U/M3U8 playlists with Media3/ExoPlayer (HLS, TS, DASH). Ships with iptv-org free-to-air sources built in — UK (319), Denmark (153), US (1579), Sports (502) — plus 'Add playlist URL' for your own provider. D-pad UI: source tiles, group filters, search, channel list with lo",
-  "next": "Build + sideload to the TV device; test playback",
-  "updated": "2026-07-29T21:48:17.345Z"
+  "headline": "Overnight device test done — 7 bugs found, fixes building",
+  "summary": "Tested on OnePlus 10: playback (HLS), zapping, search, groups, geo filter, custom playlists, persistence all verified working. Found+fixing: favourites unreachable, custom playlists unremovable, M3U comma-title bug, semicolon group soup, screen sleeps during playback, non-immersive player, ambiguous",
+  "next": "Verify fixed build on device, commit",
+  "updated": "2026-07-29T23:47:53.971Z"
 }

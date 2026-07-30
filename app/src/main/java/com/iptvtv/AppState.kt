@@ -29,16 +29,19 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
     var group by mutableStateOf<String?>(null)
     var hideGeo by mutableStateOf(repo.hideGeoBlocked)
 
+    /** Observable mirror of the persisted favourites — prefs alone can't drive recomposition. */
+    private var favs by mutableStateOf(repo.favourites().toSet())
+
     /** All groups present in the loaded source, most-populated first. */
     val groups: List<String>
-        get() = channels.groupingBy { it.group }.eachCount().entries
+        get() = channels.flatMap { it.groups }.groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }.map { it.key }
 
     /** Channels after the search / group / geo filters. */
     val visible: List<Channel>
         get() = channels.asSequence()
             .filter { !hideGeo || !it.geoBlocked }
-            .filter { group == null || it.group == group }
+            .filter { group == null || it.groups.contains(group) }
             .filter { query.isBlank() || it.name.contains(query, true) || it.group.contains(query, true) }
             .toList()
 
@@ -71,8 +74,11 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
         repo.noteWatched(next)
     }
 
-    fun isFav(c: Channel) = repo.isFavourite(c)
-    fun toggleFav(c: Channel) { repo.toggleFavourite(c); channels = channels.toList() }
+    fun isFav(c: Channel) = favs.contains(c.key)
+    fun toggleFav(c: Channel) {
+        repo.toggleFavourite(c)
+        favs = if (c.key in favs) favs - c.key else favs + c.key
+    }
 
     fun toggleHideGeo() { hideGeo = !hideGeo; repo.hideGeoBlocked = hideGeo }
 
