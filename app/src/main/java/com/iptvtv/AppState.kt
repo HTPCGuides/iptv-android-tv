@@ -101,6 +101,25 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
         repo.noteWatched(next)
     }
 
+    var cacheBytes by mutableStateOf(0L); private set
+
+    fun refreshCacheSize() {
+        viewModelScope.launch { cacheBytes = withContext(Dispatchers.IO) { repo.cacheBytes() } }
+    }
+
+    fun clearCache() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                // Let Coil close its disk cache handles cleanly before we sweep the dir.
+                val loader = coil.Coil.imageLoader(getApplication())
+                loader.memoryCache?.clear()
+                runCatching { loader.diskCache?.clear() }
+                repo.clearCache()
+            }
+            cacheBytes = withContext(Dispatchers.IO) { repo.cacheBytes() }
+        }
+    }
+
     fun isFav(c: Channel) = favs.contains(c.key)
     fun toggleFav(c: Channel) {
         repo.toggleFavourite(c)

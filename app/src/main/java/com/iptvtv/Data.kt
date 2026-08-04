@@ -154,6 +154,17 @@ class Repo(private val ctx: Context) {
     fun recents(): List<String> =
         (prefs.getString("recents", "") ?: "").split("\n").filter { it.isNotBlank() }
 
+    // ---- cache housekeeping ----
+    /** Bytes used by cached playlists + the app cache dir (logo images etc.). */
+    fun cacheBytes(): Long =
+        (cacheDir.walkBottomUp() + ctx.cacheDir.walkBottomUp())
+            .filter { it.isFile }.sumOf { it.length() }
+
+    fun clearCache() {
+        cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+        ctx.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+    }
+
     // ---- prefs ----
     var hideGeoBlocked: Boolean
         get() = prefs.getBoolean("hideGeo", false)   // kept visible by default — VPN users want them

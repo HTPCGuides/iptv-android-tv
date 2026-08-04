@@ -45,6 +45,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
+fun formatBytes(b: Long): String = when {
+    b >= 1_000_000_000 -> "%.1f GB".format(b / 1e9)
+    b >= 1_000_000 -> "%.1f MB".format(b / 1e6)
+    b >= 1_000 -> "%.0f kB".format(b / 1e3)
+    else -> "$b B"
+}
+
 val Bg = Color(0xFF0B1120)
 val Card = Color(0xFF16202E)
 val Accent = Color(0xFF38BDF8)
@@ -73,7 +80,7 @@ fun TvItem(
 @Composable
 fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit, onPlay: (Channel) -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { vm.refreshHomeRows() }   // favourites/recents change while we're away
+    LaunchedEffect(Unit) { vm.refreshHomeRows(); vm.refreshCacheSize() }   // both change while we're away
     Column(
         Modifier.fillMaxSize().background(Bg)
             .verticalScroll(rememberScrollState()).padding(28.dp),
@@ -140,6 +147,16 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit, onPlay: (Channel) ->
         }
         Spacer(Modifier.height(8.dp))
         Text("Geo-blocked channels only play from inside their own country — leave them shown if you use a VPN.",
+            color = Muted, fontSize = 12.sp)
+
+        Spacer(Modifier.height(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TvItem(onClick = { vm.clearCache() }) {
+                Text("🧹  Clear cached data  ·  ${formatBytes(vm.cacheBytes)}", color = Color.White, fontSize = 14.sp)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Downloaded playlists and channel logos — they re-download when needed. Favourites and your playlists are kept.",
             color = Muted, fontSize = 12.sp)
 
         if (showAdd) AddPlaylistDialog(onAdd = { n, u -> vm.addSource(n, u); showAdd = false }, onCancel = { showAdd = false })

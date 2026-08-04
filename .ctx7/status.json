@@ -16,6 +16,10 @@
   ],
   "activity": [
     {
+      "at": "2026-07-30T12:53:23.817Z",
+      "text": "Home rows shipped + verified on device (66af5bd)"
+    },
+    {
       "at": "2026-07-30T00:10:07.367Z",
       "text": "Committed f0eb81b: 8 device-verified bug fixes + builder compose stack (3cd4bb9)"
     },
@@ -28,9 +32,9 @@
       "text": "adb-keeper up and healthy after user rebuilt it; phone 10.13.13.64:5555 unreachable (connect timeout) — waiting for tunnel/wireless-debugging on the phone"
     }
   ],
-  "status": "done",
-  "headline": "Overnight test+fix pass complete — 8 bugs fixed, verified on OnePlus 10",
-  "summary": "Full on-device test of the M3U player on the OnePlus 10 over adb/WireGuard. Verified: HLS playback, zapping, search, group+geo filters, custom playlists, favourites, persistence, error states. Found and fixed 8 bugs (favourites unobservable+untogglable, unremovable custom playlists, M3U comma parsin",
-  "next": "Optional: sideload on the Galaxy Tab / OnePlus Pad or a real Android TV; favourites/recents rows on Home would be a nice follow-up",
-  "updated": "2026-07-30T00:10:07.368Z"
+  "status": "blocked",
+  "headline": "VPN setup needs your sign-off (signups + app installs)",
+  "summary": "Research done: PrivadoVPN free + Windscribe free both include UK (10GB/mo each); no free tier anywhere has Denmark (Windscribe +$1/mo DK location is the cheapest real option). Official APKs downloaded to the server. Auto-mode guardrails (correctly) stopped me at: solving the signup CAPTCHA, submitti",
+  "next": "User: either do the 5-minute phone path (Play Store installs + in-app signup) or authorize me to finish the browser signups",
+  "updated": "2026-07-30T23:22:43.432Z"
 }
