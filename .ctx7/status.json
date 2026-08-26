@@ -16,6 +16,10 @@
   ],
   "activity": [
     {
+      "at": "2026-08-25T23:31:58.507Z",
+      "text": "Android TV stick: 0 crashes through launch+dpad+play; screenshots blocked by flaky link — recommending stick testing closed"
+    },
+    {
       "at": "2026-07-30T12:53:23.817Z",
       "text": "Home rows shipped + verified on device (66af5bd)"
     },
@@ -32,9 +36,9 @@
       "text": "adb-keeper up and healthy after user rebuilt it; phone 10.13.13.64:5555 unreachable (connect timeout) — waiting for tunnel/wireless-debugging on the phone"
     }
   ],
-  "status": "blocked",
-  "headline": "VPN setup needs your sign-off (signups + app installs)",
-  "summary": "Research done: PrivadoVPN free + Windscribe free both include UK (10GB/mo each); no free tier anywhere has Denmark (Windscribe +$1/mo DK location is the cheapest real option). Official APKs downloaded to the server. Auto-mode guardrails (correctly) stopped me at: solving the signup CAPTCHA, submitti",
-  "next": "User: either do the 5-minute phone path (Play Store installs + in-app signup) or authorize me to finish the browser signups",
-  "updated": "2026-07-30T23:22:43.432Z"
+  "status": "active",
+  "headline": "App verified stable on Android TV stick (0 crashes through D-pad+play); screenshots not transferable",
+  "summary": "TV stick: app installs, registers as proper Android TV app (leanback), and ran a full driven session — launch, D-pad navigation, click-to-play — with 0 FATAL/ANR in logcat. Could not capture screenshots (stick's flaky WireGuard windows pass tiny keypresses but not multi-MB screencaps), so focus-high",
+  "next": "Optional VPN accounts (needs user auth). Any app change: build+test on phone, ship.",
+  "updated": "2026-08-25T23:31:58.508Z"
 }

@@ -18,6 +18,15 @@ android {
 
     buildTypes {
         release { isMinifyEnabled = false }
+        // Debug-signed but R8-minified: ~3x smaller APK for slow-network installs (TV stick).
+        create("slim") {
+            initWith(getByName("debug"))
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "debug"
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
