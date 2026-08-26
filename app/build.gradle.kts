@@ -56,5 +56,9 @@ dependencies {
     // Channel logos
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    // Casting to a Chromecast / Google TV, the way Plex and YouTube do it.
+    // Pulls androidx.mediarouter in transitively — that is what does discovery.
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
+
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }

@@ -19,6 +19,12 @@
         android:usesCleartextTraffic="true">
         <!-- ^ many IPTV streams are plain http:// -->
 
+        <!-- The Cast framework loads this by name at runtime. Without it,
+             CastContext.getSharedInstance() throws on first use. -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.iptvtv.CastOptionsProvider" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

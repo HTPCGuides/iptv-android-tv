@@ -16,6 +16,10 @@
   ],
   "activity": [
     {
+      "at": "2026-08-26T00:21:55.985Z",
+      "text": "Full regression pass on OnePlus 10: all features verified, zero crashes"
+    },
+    {
       "at": "2026-08-25T23:31:58.507Z",
       "text": "Android TV stick: 0 crashes through launch+dpad+play; screenshots blocked by flaky link — recommending stick testing closed"
     },
@@ -36,9 +40,9 @@
       "text": "adb-keeper up and healthy after user rebuilt it; phone 10.13.13.64:5555 unreachable (connect timeout) — waiting for tunnel/wireless-debugging on the phone"
     }
   ],
-  "status": "active",
-  "headline": "App verified stable on Android TV stick (0 crashes through D-pad+play); screenshots not transferable",
-  "summary": "TV stick: app installs, registers as proper Android TV app (leanback), and ran a full driven session — launch, D-pad navigation, click-to-play — with 0 FATAL/ANR in logcat. Could not capture screenshots (stick's flaky WireGuard windows pass tiny keypresses but not multi-MB screencaps), so focus-high",
-  "next": "Optional VPN accounts (needs user auth). Any app change: build+test on phone, ship.",
-  "updated": "2026-08-25T23:31:58.508Z"
+  "status": "done",
+  "headline": "Full regression pass green on OnePlus 10 — zero crashes",
+  "summary": "Rebuilt and ran a full regression on the phone: Denmark playlist (155 ch), group filter (155→9 Kids, multi-group channels matching correctly), playback (immersive, HW decode), info bar, in-filter zapping, geo-blocked error handling, favourite toggle, Home favourites/recents rows updating live, clear",
+  "next": "Optional: VPN accounts for UK/DK unblocking (needs user auth)",
+  "updated": "2026-08-26T00:21:56.046Z"
 }
