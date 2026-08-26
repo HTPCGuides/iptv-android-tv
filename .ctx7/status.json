@@ -41,8 +41,8 @@
     }
   ],
   "status": "done",
-  "headline": "UI polish shipped — design system, D-pad fixes, insets; verified on device",
-  "summary": "Impeccable polish pass over Home/Channels/Player. System: Theme.kt (Material color roles + TV-legible type scale + 4dp spacing) and Components.kt (one authored focus response: lift, accent ring, glow, spring; honours system Remove-animations). Fixed P0s found by testing: content drawing under the An",
+  "headline": "Player gained Stop and captions controls — verified on device",
+  "summary": "Stop (top-left) ends playback and returns to the channel list; previously Back gesture was the only exit. Captions (CC, top-right) toggles text tracks, persists across channels and restarts, and is always visible — saying 'None on this channel' rather than hiding when a stream carries no text. Both ",
   "next": "Optional: VPN accounts for UK/DK (needs user auth)",
-  "updated": "2026-08-26T01:55:35.400Z"
+  "updated": "2026-08-26T09:31:38.584Z"
 }

@@ -362,7 +362,15 @@ fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> U
             .safeDrawingPadding()
             .padding(horizontal = Space.xl, vertical = Space.lg),
     ) {
+        // Laid out like a top app bar: navigation at the start, title, actions at the
+        // end. Going back was sitting on the right as a labelled pill heavy enough to
+        // out-shout the screen's own title.
         Row(verticalAlignment = Alignment.CenterVertically) {
+            TvIconButton(
+                Icons.AutoMirrored.Rounded.ArrowBack, "Back to sources", onBack,
+                tint = cs.onSurface,
+            )
+            Spacer(Modifier.width(Space.md))
             vm.currentSource?.takeIf { it.builtIn }?.let {
                 Text(it.emoji, fontSize = 24.sp)
                 Spacer(Modifier.width(Space.md))
@@ -381,9 +389,11 @@ fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> U
                 }
             }
             Spacer(Modifier.width(Space.md))
-            TvActionButton("Refresh", { vm.currentSource?.let { vm.open(it, refresh = true) } }, icon = Icons.Rounded.Refresh)
-            Spacer(Modifier.width(Space.sm))
-            TvActionButton("Sources", onBack, icon = Icons.AutoMirrored.Rounded.ArrowBack)
+            TvIconButton(
+                Icons.Rounded.Refresh, "Reload this playlist",
+                { vm.currentSource?.let { vm.open(it, refresh = true) } },
+                tint = cs.onSurface,
+            )
         }
 
         Spacer(Modifier.height(Space.lg))
