@@ -51,11 +51,30 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
         val wanted = (favKeys + recentKeys).map { it.substringBefore('|') }.toSet()
         val have = sources.filter { it.id in wanted }
         viewModelScope.launch {
-            val byKey = withContext(Dispatchers.IO) {
+            val loaded = withContext(Dispatchers.IO) {
                 have.flatMap { s -> runCatching { repo.load(s) }.getOrDefault(emptyList()) }
-            }.associateBy { it.key }
-            favChannels = favKeys.mapNotNull { byKey[it] }.sortedBy { it.clean.lowercase() }
-            recentChannels = recentKeys.mapNotNull { byKey[it] }.take(10)
+            }
+            // Look a channel up by either identity: the stream URL (what older
+            // favourites and all recents are keyed by) or the channel itself.
+            val byKey = HashMap<String, Channel>(loaded.size * 2)
+            loaded.forEach { c ->
+                byKey[c.key] = c
+                byKey.putIfAbsent(c.favKey, c)
+            }
+
+            // Migrate URL-keyed favourites to channel keys as their playlists load.
+            // Two feeds of one channel collapse to a single entry here; anything we
+            // could not resolve is left untouched rather than dropped.
+            val migrated = favKeys.map { byKey[it]?.favKey ?: it }.toSet()
+            if (migrated != favKeys) {
+                repo.replaceFavourites(migrated)
+                favs = migrated
+            }
+
+            favChannels = migrated.mapNotNull { byKey[it] }
+                .distinctBy { it.favKey }
+                .sortedBy { it.clean.lowercase() }
+            recentChannels = recentKeys.mapNotNull { byKey[it] }.distinctBy { it.favKey }.take(10)
         }
     }
 
@@ -120,10 +139,11 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun isFav(c: Channel) = favs.contains(c.key)
+    fun isFav(c: Channel) = favs.contains(c.favKey) || favs.contains(c.key)
     fun toggleFav(c: Channel) {
         repo.toggleFavourite(c)
-        favs = if (c.key in favs) favs - c.key else favs + c.key
+        favs = repo.favourites().toSet()
+        refreshHomeRows()   // the Home row has to lose or gain the tile straight away
     }
 
     fun toggleHideGeo() { hideGeo = !hideGeo; repo.hideGeoBlocked = hideGeo }

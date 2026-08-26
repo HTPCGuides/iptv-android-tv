@@ -23,6 +23,13 @@ data class Channel(
             .replace(Regex("""\s*\(\d+p\)( \(HEVC\))?"""), "").trim()
     val quality: String? get() = Regex("""\((\d+p)\)""").find(name)?.groupValues?.get(1)
     val key get() = "$sourceId|$url"
+    /**
+     * Identity for favouriting. Playlists carry the same channel several times as
+     * separate feeds — iptv-org's sports list has two entries both called
+     * "Red Bull TV (1080p)" on different CDNs — and to a viewer those are one
+     * channel, so the name is what a favourite is pinned to, not the stream URL.
+     */
+    val favKey get() = "$sourceId|${clean.lowercase()}"
     /** iptv-org packs several groups into one attribute ("Comedy;Movies;Sports"). */
     val groups: List<String>
         get() = group.split(';').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("Other") }
@@ -139,12 +146,14 @@ class Repo(private val ctx: Context) {
 
     // ---- favourites & recents ----
     fun favourites(): Set<String> = prefs.getStringSet("favs", emptySet()) ?: emptySet()
-    fun isFavourite(c: Channel) = favourites().contains(c.key)
+    /** `c.key` is accepted too so favourites saved before the switch still count. */
+    fun isFavourite(c: Channel) = favourites().let { it.contains(c.favKey) || it.contains(c.key) }
     fun toggleFavourite(c: Channel) {
         val set = favourites().toMutableSet()
-        if (!set.add(c.key)) set.remove(c.key)
+        if (isFavourite(c)) { set.remove(c.favKey); set.remove(c.key) } else set.add(c.favKey)
         prefs.edit().putStringSet("favs", set).apply()
     }
+    fun replaceFavourites(keys: Set<String>) = prefs.edit().putStringSet("favs", keys).apply()
 
     fun noteWatched(c: Channel) {
         val list = recents().toMutableList()

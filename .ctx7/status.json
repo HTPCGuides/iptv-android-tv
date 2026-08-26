@@ -41,8 +41,8 @@
     }
   ],
   "status": "done",
-  "headline": "Player gained Stop and captions controls — verified on device",
-  "summary": "Stop (top-left) ends playback and returns to the channel list; previously Back gesture was the only exit. Captions (CC, top-right) toggles text tracks, persists across channels and restarts, and is always visible — saying 'None on this channel' rather than hiding when a stream carries no text. Both ",
+  "headline": "Player controls consolidated; channel list header rebuilt — verified",
+  "summary": "Player: removed the inert hint line that looked like buttons ('Back to list' was text, not a control — tapping did nothing). All controls now in one bottom bar: identity left; previous, next, subtitles, cast, Back to list right. Previous/next are new — the old '↑↓ change channel' hint was impossible",
   "next": "Optional: VPN accounts for UK/DK (needs user auth)",
-  "updated": "2026-08-26T09:31:38.584Z"
+  "updated": "2026-08-26T10:14:50.482Z"
 }
