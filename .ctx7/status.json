@@ -41,8 +41,8 @@
     }
   ],
   "status": "done",
-  "headline": "Full regression pass green on OnePlus 10 — zero crashes",
-  "summary": "Rebuilt and ran a full regression on the phone: Denmark playlist (155 ch), group filter (155→9 Kids, multi-group channels matching correctly), playback (immersive, HW decode), info bar, in-filter zapping, geo-blocked error handling, favourite toggle, Home favourites/recents rows updating live, clear",
-  "next": "Optional: VPN accounts for UK/DK unblocking (needs user auth)",
-  "updated": "2026-08-26T00:21:56.046Z"
+  "headline": "UI polish shipped — design system, D-pad fixes, insets; verified on device",
+  "summary": "Impeccable polish pass over Home/Channels/Player. System: Theme.kt (Material color roles + TV-legible type scale + 4dp spacing) and Components.kt (one authored focus response: lift, accent ring, glow, spring; honours system Remove-animations). Fixed P0s found by testing: content drawing under the An",
+  "next": "Optional: VPN accounts for UK/DK (needs user auth)",
+  "updated": "2026-08-26T01:55:35.400Z"
 }

@@ -19,8 +19,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.ClosedCaptionOff
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -54,9 +57,11 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.focusable
@@ -77,7 +82,10 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
     var showInfo by remember { mutableStateOf(true) }
     var showPicker by remember { mutableStateOf(false) }
     var reloads by remember { mutableStateOf(0) }
+    var hasSubtitles by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
+    val stopFocus = remember { FocusRequester() }
+    val overlayFocus = remember { FocusRequester() }
     val cast = rememberCastController()
     val cs = MaterialTheme.colorScheme
     val reducedMotion = LocalReducedMotion.current
@@ -89,6 +97,11 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
                 override fun onPlaybackStateChanged(state: Int) {
                     buffering = state == Player.STATE_BUFFERING
                     if (state == Player.STATE_READY) error = null
+                }
+                override fun onTracksChanged(tracks: Tracks) {
+                    // Only offer the control when the stream actually carries text —
+                    // a subtitle button that does nothing is worse than none at all.
+                    hasSubtitles = tracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
                 }
                 override fun onPlayerError(e: PlaybackException) {
                     error = when (e.errorCode) {
@@ -127,6 +140,19 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
         delay(4000)
         showInfo = false
     }
+    // Apply the remembered subtitle choice to every stream, including after a zap.
+    LaunchedEffect(vm.subtitlesOn, channel.key, reloads) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !vm.subtitlesOn)
+            .build()
+    }
+
+    // The overlay carries focusable controls; when it fades out, focus has to come
+    // back to the player itself or the D-pad is left with nothing to talk to.
+    LaunchedEffect(showInfo) {
+        if (!showInfo) runCatching { focus.requestFocus() }
+    }
+
     // Immersive playback: hide status/nav bars, restore them when leaving the player.
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -157,6 +183,15 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
                     Key.DirectionCenter, Key.Enter -> {
                         if (error != null) reloads++ else showInfo = !showInfo
                         true
+                    }
+                    // The player itself holds focus so it can hear these keys, which
+                    // means the D-pad can't wander into the overlay on its own. With
+                    // the bar up, left and right hand focus over deliberately.
+                    Key.DirectionLeft -> {
+                        if (showInfo) { runCatching { stopFocus.requestFocus() }; true } else false
+                    }
+                    Key.DirectionRight -> {
+                        if (showInfo) { runCatching { overlayFocus.requestFocus() }; true } else false
                     }
                     Key.Back -> { onExit(); true }
                     else -> false
@@ -232,25 +267,71 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
             }
         }
 
-        // Only where casting can actually happen. An Android TV box without Play
-        // services gets no button rather than a button that fails.
-        if (showInfo && cast.available) {
+        // Leaving the player was Back-only, which is invisible on a phone and easy
+        // to miss on a remote. Sits opposite the cast button, on the same overlay.
+        AnimatedVisibility(
+            visible = showInfo,
+            enter = fadeIn(tween(if (reducedMotion) 0 else 180)),
+            exit = fadeOut(tween(if (reducedMotion) 0 else 260)),
+            modifier = Modifier.align(Alignment.TopStart),
+        ) {
+            Row(Modifier.padding(Space.xl)) {
+                TvActionButton(
+                    "Stop", onExit,
+                    modifier = Modifier.focusRequester(stopFocus),
+                    icon = Icons.Rounded.Stop,
+                )
+            }
+        }
+
+        if (showInfo) {
             Row(
-                Modifier.align(Alignment.TopEnd).padding(20.dp),
+                Modifier.align(Alignment.TopEnd).padding(Space.xl),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (cast.connecting) {
-                    Text("Connecting…", style = MaterialTheme.typography.labelLarge, color = cs.primary)
-                    Spacer(Modifier.width(Space.md))
-                }
-                IconButton(onClick = { if (cast.casting) cast.disconnect() else showPicker = true }) {
-                    Icon(
-                        if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
-                        contentDescription = if (cast.casting)
-                            "Stop casting to ${cast.deviceName}" else "Cast to a device",
-                        tint = if (cast.casting) cs.primary else Color.White,
-                        modifier = Modifier.size(28.dp),
+                // Always offered, so captions are a control you can find rather than
+                // one that appears only on channels that happen to carry them. When
+                // this stream has none, say so instead of leaving a dead switch.
+                if (vm.subtitlesOn && !hasSubtitles) {
+                    Text(
+                        "None on this channel",
+                        style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant,
                     )
+                    Spacer(Modifier.width(Space.sm))
+                }
+                TvIconButton(
+                    icon = if (vm.subtitlesOn) Icons.Rounded.ClosedCaption
+                    else Icons.Rounded.ClosedCaptionOff,
+                    contentDescription = when {
+                        vm.subtitlesOn && !hasSubtitles -> "Subtitles on, but this channel has none"
+                        vm.subtitlesOn -> "Turn subtitles off"
+                        else -> "Turn subtitles on"
+                    },
+                    onClick = { vm.toggleSubtitles() },
+                    modifier = Modifier.focusRequester(overlayFocus),
+                    tint = when {
+                        vm.subtitlesOn && !hasSubtitles -> cs.onSurfaceVariant
+                        vm.subtitlesOn -> cs.primary
+                        else -> Color.White
+                    },
+                )
+                Spacer(Modifier.width(Space.sm))
+                // Casting only where it can actually happen. An Android TV box without
+                // Play services gets no button rather than a button that fails.
+                if (cast.available) {
+                    if (cast.connecting) {
+                        Text("Connecting…", style = MaterialTheme.typography.labelLarge, color = cs.primary)
+                        Spacer(Modifier.width(Space.md))
+                    }
+                    IconButton(onClick = { if (cast.casting) cast.disconnect() else showPicker = true }) {
+                        Icon(
+                            if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
+                            contentDescription = if (cast.casting)
+                                "Stop casting to ${cast.deviceName}" else "Cast to a device",
+                            tint = if (cast.casting) cs.primary else Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
                 }
             }
         }

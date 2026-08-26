@@ -169,4 +169,9 @@ class Repo(private val ctx: Context) {
     var hideGeoBlocked: Boolean
         get() = prefs.getBoolean("hideGeo", false)   // kept visible by default — VPN users want them
         set(v) = prefs.edit().putBoolean("hideGeo", v).apply()
+
+    /** Off by default: most live channels burn subtitles in or carry none at all. */
+    var subtitlesOn: Boolean
+        get() = prefs.getBoolean("subs", false)
+        set(v) = prefs.edit().putBoolean("subs", v).apply()
 }

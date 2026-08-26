@@ -128,6 +128,12 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleHideGeo() { hideGeo = !hideGeo; repo.hideGeoBlocked = hideGeo }
 
+    /** Subtitle preference is remembered across channels and sessions, like a TV does. */
+    var subtitlesOn by mutableStateOf(repo.subtitlesOn)
+        private set
+
+    fun toggleSubtitles() { subtitlesOn = !subtitlesOn; repo.subtitlesOn = subtitlesOn }
+
     fun addSource(name: String, url: String) {
         repo.addCustomSource(name, url)
         sources = repo.sources()
