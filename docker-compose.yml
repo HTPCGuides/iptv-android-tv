@@ -1,5 +1,7 @@
 services:
   builder:
+    labels:  # the home dashboard lists containers carrying this label
+      - aidevserver.project=true
     image: paddel-builder
     container_name: iptv-tv-builder
     working_dir: /work
