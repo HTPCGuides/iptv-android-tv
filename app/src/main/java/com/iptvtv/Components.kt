@@ -62,12 +62,15 @@ fun TvSurface(
     shape: Shape = MaterialTheme.shapes.medium,
     peakScale: Float = 1.05f,
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.lg, vertical = Space.md),
+    contentAlignment: Alignment = Alignment.TopStart,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val scale = focusMotion(focused, peakScale)
     val cs = MaterialTheme.colorScheme
     Box(
+        contentAlignment = contentAlignment,
+        modifier =
         modifier
             .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
@@ -131,6 +134,9 @@ fun TvActionButton(
         shape = RoundedCornerShape(50),
         peakScale = 1.08f,
         contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
+        // The label row is shorter than the 48dp touch minimum; without this it
+        // hugs the top of the pill and the whole button looks misaligned.
+        contentAlignment = Alignment.Center,
     ) { focused ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             val fg = if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface

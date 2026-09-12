@@ -325,7 +325,15 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                     .fillMaxWidth()
                     // Gradient rather than a hard band: the bar has to sit on moving
                     // picture without cutting a visible edge across it.
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .92f), Color.Transparent)))
+                    // Held dark through the text before it fades: on a bright, full-frame
+                    // picture a straight fade left the second line sitting on sky.
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = .9f),
+                            .6f to Color.Black.copy(alpha = .7f),
+                            1f to Color.Transparent,
+                        ),
+                    )
                     .safeDrawingPadding()   // clear of the camera cutout in landscape
                     .padding(start = Space.xl, end = Space.xl, top = Space.lg, bottom = Space.xxl)
                     .onFocusChanged { controlsFocused = it.hasFocus }
@@ -346,9 +354,12 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                     )
                     Spacer(Modifier.height(Space.xs))
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Secondary text over picture is dimmed white, not the UI's
+                        // blue-grey: that grey is tuned for the app's own ink surfaces
+                        // and turns muddy over footage.
                         Text(
                             channel.groups.joinToString(" · "),
-                            style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = .8f),
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
                         )
@@ -372,7 +383,7 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                             Spacer(Modifier.width(Space.md))
                             Text(
                                 "No subtitles on this channel",
-                                style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = .8f),
                                 maxLines = 1,
                             )
                         }
