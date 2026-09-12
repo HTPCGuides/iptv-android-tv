@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -24,13 +25,13 @@ import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionOff
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +53,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -60,7 +62,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -76,10 +77,13 @@ import kotlinx.coroutines.delay
  * Full-screen player. D-pad: up/down = previous/next channel, centre = toggle the
  * info bar, back = exit. Errors are surfaced instead of leaving a black screen —
  * dead streams are common in public IPTV lists.
+ *
+ * [exitLabel] names where leaving goes — the player is reached from Home as well as
+ * from a channel list, so a fixed "Back to list" was wrong half the time.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
+fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
     val ctx = LocalContext.current
     val channel = vm.playing ?: return
     var error by remember { mutableStateOf<String?>(null) }
@@ -88,6 +92,9 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var reloads by remember { mutableStateOf(0) }
     var hasSubtitles by remember { mutableStateOf(false) }
+    // Bumped by every key press and control tap while the bar is up; restarts its
+    // hide timer, so the bar never fades out from under someone using it.
+    var pokes by remember { mutableStateOf(0) }
     val focus = remember { FocusRequester() }
     val controlsFocus = remember { FocusRequester() }
     val backFocus = remember { FocusRequester() }
@@ -127,7 +134,7 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
 
     // (re)load whenever the selected channel changes — also covers channel up/down and retry
     LaunchedEffect(channel.key, cast.casting, reloads) {
-        error = null; showInfo = true
+        error = null; showInfo = true; pokes++
         if (cast.casting) {
             // The TV is the screen now. Stop decoding locally — a phone quietly
             // burning battery on a stream nobody is watching is the bug every
@@ -143,7 +150,12 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
             player.prepare()
             player.play()
         }
-        delay(4000)
+    }
+    // Fade the bar after a quiet spell. A remote resting on a control gets longer:
+    // someone is mid-task there, not watching.
+    LaunchedEffect(showInfo, pokes, showPicker) {
+        if (!showInfo || showPicker) return@LaunchedEffect
+        delay(if (controlsFocused) 8000 else 4000)
         showInfo = false
     }
     // Apply the remembered subtitle choice to every stream, including after a zap.
@@ -179,6 +191,12 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
             // phone or tablet there was no way in at all, which is where the
             // cast button now lives.
             .pointerInput(Unit) { detectTapGestures { showInfo = !showInfo } }
+            // Sees every key before the focused control does, so walking the bar
+            // with a remote keeps it on screen.
+            .onPreviewKeyEvent { ev ->
+                if (ev.type == KeyEventType.KeyDown && showInfo) pokes++
+                false
+            }
             .focusRequester(focus).focusable()
             .onKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
@@ -192,8 +210,9 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
                     }
                     // The player itself holds focus so it can hear these keys, which
                     // means the D-pad can't wander into the control bar on its own.
-                    // Hand focus over on the first sideways press; once it is in the
-                    // row, step aside so left/right can walk between the buttons.
+                    // Hand focus over on the first sideways press — left lands on back
+                    // at the start of the bar, right on the actions at its end — then
+                    // step aside so left/right can walk the whole row.
                     Key.DirectionLeft, Key.DirectionRight -> when {
                         !showInfo -> false
                         controlsFocused -> false
@@ -232,7 +251,7 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
                     )
                     Spacer(Modifier.height(Space.xs))
                     Text(
-                        "↑↓ changes the channel on the TV",
+                        "Previous and next change the channel on the TV",
                         style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
                     )
                 }
@@ -268,8 +287,13 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(Space.lg))
+                    // A real button: the old "OK to try again" line was a remote-only
+                    // instruction, so on a touchscreen a dead stream had no retry at all.
+                    // OK on a remote still retries straight from the player.
+                    TvActionButton("Try again", { reloads++ }, icon = Icons.Rounded.Refresh)
+                    Spacer(Modifier.height(Space.md))
                     Text(
-                        "OK to try again   ·   ↑↓ for another channel   ·   Back to the list",
+                        "Or skip to the previous or next channel.",
                         style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
@@ -289,18 +313,32 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
             visible = showInfo,
             enter = fadeIn(tween(if (reducedMotion) 0 else 180)),
             exit = fadeOut(tween(if (reducedMotion) 0 else 260)),
-            modifier = Modifier.align(Alignment.BottomStart),
+            modifier = Modifier.align(Alignment.TopStart),
         ) {
+            // Laid out like the channel list's app bar — back at the start, what you're
+            // watching, actions at the end — and at the top, where Android puts screen
+            // navigation and where it stays clear of the subtitles. Back used to be a
+            // filled, labelled pill at the far end of the action row: a card dropped
+            // among transparent icons, and a navigation control posing as an action.
             Row(
                 Modifier
                     .fillMaxWidth()
                     // Gradient rather than a hard band: the bar has to sit on moving
                     // picture without cutting a visible edge across it.
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .92f))))
-                    .padding(horizontal = Space.xl, vertical = Space.xl),
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .92f), Color.Transparent)))
+                    .safeDrawingPadding()   // clear of the camera cutout in landscape
+                    .padding(start = Space.xl, end = Space.xl, top = Space.lg, bottom = Space.xxl)
+                    .onFocusChanged { controlsFocused = it.hasFocus }
+                    .focusGroup(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // What you're watching, on the left.
+                TvIconButton(
+                    Icons.AutoMirrored.Rounded.ArrowBack, exitLabel, onExit,
+                    modifier = Modifier.focusRequester(backFocus),
+                    tint = Color.White,
+                )
+                Spacer(Modifier.width(Space.md))
+
                 Column(Modifier.weight(1f)) {
                     Text(
                         channel.clean, style = MaterialTheme.typography.headlineSmall, color = Color.White,
@@ -335,66 +373,51 @@ fun PlayerScreen(vm: IptvViewModel, onExit: () -> Unit) {
                             Text(
                                 "No subtitles on this channel",
                                 style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant,
+                                maxLines = 1,
                             )
                         }
                     }
                 }
 
-                Spacer(Modifier.width(Space.xl))
+                Spacer(Modifier.width(Space.lg))
 
-                // Every control in one row, so there is one place to look and one
-                // line for the D-pad to travel. Nothing here is a label pretending
-                // to be a button.
-                Row(
-                    Modifier
-                        .onFocusChanged { controlsFocused = it.hasFocus }
-                        .focusGroup(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TvIconButton(
-                        Icons.Rounded.SkipPrevious, "Previous channel", { vm.step(-1) },
-                        modifier = Modifier.focusRequester(controlsFocus),
-                        tint = Color.White,
-                    )
-                    TvIconButton(Icons.Rounded.SkipNext, "Next channel", { vm.step(1) }, tint = Color.White)
-                    TvIconButton(
-                        icon = if (vm.subtitlesOn) Icons.Rounded.ClosedCaption
-                        else Icons.Rounded.ClosedCaptionOff,
-                        contentDescription = when {
-                            vm.subtitlesOn && !hasSubtitles -> "Subtitles on, but this channel has none"
-                            vm.subtitlesOn -> "Turn subtitles off"
-                            else -> "Turn subtitles on"
-                        },
-                        onClick = { vm.toggleSubtitles() },
-                        tint = when {
-                            vm.subtitlesOn && !hasSubtitles -> cs.onSurfaceVariant
-                            vm.subtitlesOn -> cs.primary
-                            else -> Color.White
-                        },
-                    )
-                    // Casting only where it can actually happen. An Android TV box
-                    // without Play services gets no button rather than one that fails.
-                    if (cast.available) {
-                        if (cast.connecting) {
-                            Text(
-                                "Connecting…",
-                                style = MaterialTheme.typography.labelMedium, color = cs.primary,
-                            )
-                            Spacer(Modifier.width(Space.sm))
-                        }
-                        TvIconButton(
-                            icon = if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
-                            contentDescription = if (cast.casting)
-                                "Stop casting to ${cast.deviceName}" else "Cast to a device",
-                            onClick = { if (cast.casting) cast.disconnect() else showPicker = true },
-                            tint = if (cast.casting) cs.primary else Color.White,
+                TvIconButton(
+                    Icons.Rounded.SkipPrevious, "Previous channel", { vm.step(-1) },
+                    modifier = Modifier.focusRequester(controlsFocus),
+                    tint = Color.White,
+                )
+                TvIconButton(Icons.Rounded.SkipNext, "Next channel", { vm.step(1) }, tint = Color.White)
+                TvIconButton(
+                    icon = if (vm.subtitlesOn) Icons.Rounded.ClosedCaption
+                    else Icons.Rounded.ClosedCaptionOff,
+                    contentDescription = when {
+                        vm.subtitlesOn && !hasSubtitles -> "Subtitles on, but this channel has none"
+                        vm.subtitlesOn -> "Turn subtitles off"
+                        else -> "Turn subtitles on"
+                    },
+                    onClick = { vm.toggleSubtitles(); pokes++ },
+                    tint = when {
+                        vm.subtitlesOn && !hasSubtitles -> cs.onSurfaceVariant
+                        vm.subtitlesOn -> cs.primary
+                        else -> Color.White
+                    },
+                )
+                // Casting only where it can actually happen. An Android TV box
+                // without Play services gets no button rather than one that fails.
+                if (cast.available) {
+                    if (cast.connecting) {
+                        Text(
+                            "Connecting…",
+                            style = MaterialTheme.typography.labelMedium, color = cs.primary,
                         )
+                        Spacer(Modifier.width(Space.sm))
                     }
-                    Spacer(Modifier.width(Space.md))
-                    TvActionButton(
-                        "Back to list", onExit,
-                        modifier = Modifier.focusRequester(backFocus),
-                        icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                    TvIconButton(
+                        icon = if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
+                        contentDescription = if (cast.casting)
+                            "Stop casting to ${cast.deviceName}" else "Cast to a device",
+                        onClick = { if (cast.casting) cast.disconnect() else showPicker = true },
+                        tint = if (cast.casting) cs.primary else Color.White,
                     )
                 }
             }

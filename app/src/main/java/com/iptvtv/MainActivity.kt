@@ -53,6 +53,9 @@ private fun App() {
             onPlay = { playerReturn = Route.CHANNELS; route = Route.PLAYER },
             onBack = { route = Route.HOME },
         )
-        Route.PLAYER -> PlayerScreen(vm) { vm.stop(); route = playerReturn }
+        Route.PLAYER -> PlayerScreen(
+            vm,
+            exitLabel = if (playerReturn == Route.HOME) "Back to home" else "Back to channels",
+        ) { vm.stop(); route = playerReturn }
     }
 }
