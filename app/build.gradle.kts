@@ -16,6 +16,18 @@ android {
         versionName = "0.1.0"
     }
 
+    // Pinned in-tree so every builder signs with the same key. The app used to take
+    // whichever ~/.android/debug.keystore the build container happened to have, and
+    // when that container went away so did the key — the phone then refused every
+    // update until the app, and its favourites, were uninstalled.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     buildTypes {
         release { isMinifyEnabled = false }
         // Debug-signed but R8-minified: ~3x smaller APK for slow-network installs (TV stick).
