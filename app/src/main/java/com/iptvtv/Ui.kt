@@ -79,6 +79,8 @@ import android.content.Context
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Edit
@@ -641,10 +643,14 @@ fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> U
                       }
                       Spacer(Modifier.width(Space.sm))
                       val fav = vm.isFav(c)
+                      // The row's own action is the one that carries the channel name; the
+                      // star is a short label with its state, so a screen reader says
+                      // "Favourite, on" rather than repeating the name for every row.
                       TvIconButton(
                           icon = if (fav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                          contentDescription = if (fav) "Remove ${c.clean} from favourites" else "Add ${c.clean} to favourites",
+                          contentDescription = "Favourite",
                           onClick = { vm.toggleFav(c) },
+                          modifier = Modifier.semantics { stateDescription = if (fav) "On" else "Off" },
                           tint = if (fav) cs.primary else cs.onSurfaceVariant,
                       )
                     }
