@@ -1,4 +1,6 @@
-package com.iptvtv
+package com.iptvtv.ui.player
+
+import com.iptvtv.ui.Space
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

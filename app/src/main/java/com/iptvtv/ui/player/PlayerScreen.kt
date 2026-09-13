@@ -1,11 +1,14 @@
-package com.iptvtv
+package com.iptvtv.ui.player
 
+import android.os.SystemClock
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +17,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -46,7 +49,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -59,76 +61,71 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import androidx.compose.foundation.focusable
-import android.os.SystemClock
-import android.util.Log
-import androidx.media3.exoplayer.DefaultLoadControl
+import com.iptvtv.model.DEFAULT_PREBUFFER_MS
+import com.iptvtv.ui.LocalReducedMotion
+import com.iptvtv.ui.Space
+import com.iptvtv.ui.TvActionButton
+import com.iptvtv.ui.TvIconButton
+import com.iptvtv.ui.containerViewModel
 import kotlinx.coroutines.delay
 
 /** At most this many silent restarts of a dropped stream per [RECOVERY_WINDOW_MS]. */
 private const val MAX_RECOVERIES = 3
 private const val RECOVERY_WINDOW_MS = 60_000L
 
-/**
- * Buffer rules for the chosen pre-buffer: playback starts once [prebufferMs] is loaded, and
- * after a stall once the larger of that and Media3's usual 5 s is. How far ahead the player
- * keeps loading stays at Media3's 50 s.
- */
-private fun loadControlFor(prebufferMs: Int): DefaultLoadControl {
-    val afterStall = maxOf(prebufferMs, DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
-    val minBuffer = maxOf(DefaultLoadControl.DEFAULT_MIN_BUFFER_MS, afterStall)
-    return DefaultLoadControl.Builder()
-        .setBufferDurationsMs(
-            minBuffer, maxOf(DefaultLoadControl.DEFAULT_MAX_BUFFER_MS, minBuffer), prebufferMs, afterStall,
-        )
-        .build()
+@Composable
+fun PlayerRoute(
+    exitLabel: String,
+    onExit: () -> Unit,
+    viewModel: PlayerViewModel = containerViewModel { c, _ -> PlayerViewModel(c.repository, c.playback) },
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Leaving the screen, by any route, ends playback: there is no background audio.
+    DisposableEffect(Unit) { onDispose { viewModel.stop() } }
+    PlayerScreen(
+        uiState = uiState,
+        exitLabel = exitLabel,
+        onExit = onExit,
+        onStep = viewModel::step,
+        onToggleSubtitles = viewModel::toggleSubtitles,
+    )
 }
-
-/**
- * On a live stream Media3 only waits for half the distance to the live edge, whatever the
- * pre-buffer says, and HLS playlists usually sit just three segments back — so a long
- * pre-buffer would quietly be cut short. Longer settings therefore also play further behind
- * live: twice the pre-buffer, and never closer than 30 s, which is behind nearly every
- * playlist's own choice. The default and shorter keep the playlist's.
- *
- * Media3 clamps that offset to what the playlist actually keeps, so a 60 s pre-buffer on a
- * channel holding 40 s gets 20 s. Raw MPEG-TS has no live window and gets the full amount.
- */
-private fun mediaItemFor(url: String, prebufferMs: Int): MediaItem =
-    MediaItem.Builder().setUri(url).apply {
-        if (prebufferMs > DEFAULT_PREBUFFER_MS) {
-            setLiveConfiguration(
-                MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(maxOf(2L * prebufferMs + 2_000, 30_000L))
-                    .build(),
-            )
-        }
-    }.build()
 
 /**
  * Full-screen player. D-pad: up/down = previous/next channel, centre = toggle the
  * info bar, back = exit. Errors are surfaced instead of leaving a black screen —
  * dead streams are common in public IPTV lists.
  *
- * [exitLabel] names where leaving goes — the player is reached from Home as well as
- * from a channel list, so a fixed "Back to list" was wrong half the time.
+ * The ExoPlayer lives here rather than in the ViewModel: it is bound to a PlayerView
+ * and to this Activity's window, and this screen is the only place it plays.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
+fun PlayerScreen(
+    uiState: PlayerUiState,
+    exitLabel: String,
+    onExit: () -> Unit,
+    onStep: (Int) -> Unit,
+    onToggleSubtitles: () -> Unit,
+) {
+    val playing = uiState as? PlayerUiState.Playing ?: return
+    val channel = playing.channel
+    val settings = playing.settings
     val ctx = LocalContext.current
-    val channel = vm.playing ?: return
     var error by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(true) }
     var showInfo by remember { mutableStateOf(true) }
@@ -153,9 +150,11 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
     // minute, so a stream that is genuinely broken still reaches the error screen.
     val recoveries = remember { ArrayDeque<Long>() }
 
+    // The pre-buffer is read once, when the player is built: a change takes effect from
+    // the next channel started, which is what the setting says.
     val player = remember {
         ExoPlayer.Builder(ctx)
-            .setLoadControl(loadControlFor(vm.prebufferMs))
+            .setLoadControl(loadControlFor(settings.prebufferMs))
             .build().apply {
             playWhenReady = true
             addListener(object : Player.Listener {
@@ -219,7 +218,7 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                 "It works locally — disconnect to watch it here."
         } else {
             buffering = true
-            player.setMediaItem(mediaItemFor(channel.url, vm.prebufferMs))
+            player.setMediaItem(mediaItemFor(channel.url, settings.prebufferMs))
             player.prepare()
             player.play()
         }
@@ -232,9 +231,9 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
         showInfo = false
     }
     // Apply the remembered subtitle choice to every stream, including after a zap.
-    LaunchedEffect(vm.subtitlesOn, channel.key, reloads) {
+    LaunchedEffect(settings.subtitlesOn, channel.key, reloads) {
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !vm.subtitlesOn)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !settings.subtitlesOn)
             .build()
     }
 
@@ -274,8 +273,8 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
             .onKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (ev.key) {
-                    Key.DirectionUp, Key.ChannelUp -> { vm.step(-1); true }
-                    Key.DirectionDown, Key.ChannelDown -> { vm.step(1); true }
+                    Key.DirectionUp, Key.ChannelUp -> { onStep(-1); true }
+                    Key.DirectionDown, Key.ChannelDown -> { onStep(1); true }
                     // Centre retries a failed stream; otherwise it toggles the info bar.
                     Key.DirectionCenter, Key.Enter -> {
                         if (error != null) reloads++ else showInfo = !showInfo
@@ -318,10 +317,7 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                     Spacer(Modifier.height(Space.md))
                     Text(channel.clean, style = MaterialTheme.typography.titleLarge, color = Color.White)
                     Spacer(Modifier.height(Space.sm))
-                    Text(
-                        "Playing on ${cast.deviceName}",
-                        style = MaterialTheme.typography.bodyLarge, color = cs.primary,
-                    )
+                    Text("Playing on ${cast.deviceName}", style = MaterialTheme.typography.bodyLarge, color = cs.primary)
                     Spacer(Modifier.height(Space.xs))
                     Text(
                         "Previous and next change the channel on the TV",
@@ -355,10 +351,7 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                     Spacer(Modifier.height(Space.md))
                     Text(channel.clean, style = MaterialTheme.typography.titleLarge, color = Color.White)
                     Spacer(Modifier.height(Space.sm))
-                    Text(
-                        it, style = MaterialTheme.typography.bodyLarge, color = cs.tertiary,
-                        textAlign = TextAlign.Center,
-                    )
+                    Text(it, style = MaterialTheme.typography.bodyLarge, color = cs.tertiary, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(Space.lg))
                     // A real button: the old "OK to try again" line was a remote-only
                     // instruction, so on a touchscreen a dead stream had no retry at all.
@@ -390,14 +383,10 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
         ) {
             // Laid out like the channel list's app bar — back at the start, what you're
             // watching, actions at the end — and at the top, where Android puts screen
-            // navigation and where it stays clear of the subtitles. Back used to be a
-            // filled, labelled pill at the far end of the action row: a card dropped
-            // among transparent icons, and a navigation control posing as an action.
+            // navigation and where it stays clear of the subtitles.
             Row(
                 Modifier
                     .fillMaxWidth()
-                    // Gradient rather than a hard band: the bar has to sit on moving
-                    // picture without cutting a visible edge across it.
                     // Held dark through the text before it fades: on a bright, full-frame
                     // picture a straight fade left the second line sitting on sky.
                     .background(
@@ -446,13 +435,13 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                             Spacer(Modifier.width(Space.xs))
                             Text("Geo-blocked", style = MaterialTheme.typography.labelMedium, color = cs.tertiary)
                         }
-                        if (vm.isFav(channel)) {
+                        if (playing.isFavourite) {
                             Spacer(Modifier.width(Space.md))
                             Icon(Icons.Rounded.Star, null, tint = cs.primary, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(Space.xs))
                             Text("Favourite", style = MaterialTheme.typography.labelMedium, color = cs.primary)
                         }
-                        if (vm.subtitlesOn && !hasSubtitles) {
+                        if (settings.subtitlesOn && !hasSubtitles) {
                             Spacer(Modifier.width(Space.md))
                             Text(
                                 "No subtitles on this channel",
@@ -466,23 +455,22 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                 Spacer(Modifier.width(Space.lg))
 
                 TvIconButton(
-                    Icons.Rounded.SkipPrevious, "Previous channel", { vm.step(-1) },
+                    Icons.Rounded.SkipPrevious, "Previous channel", { onStep(-1) },
                     modifier = Modifier.focusRequester(controlsFocus),
                     tint = Color.White,
                 )
-                TvIconButton(Icons.Rounded.SkipNext, "Next channel", { vm.step(1) }, tint = Color.White)
+                TvIconButton(Icons.Rounded.SkipNext, "Next channel", { onStep(1) }, tint = Color.White)
                 TvIconButton(
-                    icon = if (vm.subtitlesOn) Icons.Rounded.ClosedCaption
-                    else Icons.Rounded.ClosedCaptionOff,
+                    icon = if (settings.subtitlesOn) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionOff,
                     contentDescription = when {
-                        vm.subtitlesOn && !hasSubtitles -> "Subtitles on, but this channel has none"
-                        vm.subtitlesOn -> "Turn subtitles off"
+                        settings.subtitlesOn && !hasSubtitles -> "Subtitles on, but this channel has none"
+                        settings.subtitlesOn -> "Turn subtitles off"
                         else -> "Turn subtitles on"
                     },
-                    onClick = { vm.toggleSubtitles(); pokes++ },
+                    onClick = { onToggleSubtitles(); pokes++ },
                     tint = when {
-                        vm.subtitlesOn && !hasSubtitles -> cs.onSurfaceVariant
-                        vm.subtitlesOn -> cs.primary
+                        settings.subtitlesOn && !hasSubtitles -> cs.onSurfaceVariant
+                        settings.subtitlesOn -> cs.primary
                         else -> Color.White
                     },
                 )
@@ -490,16 +478,12 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                 // without Play services gets no button rather than one that fails.
                 if (cast.available) {
                     if (cast.connecting) {
-                        Text(
-                            "Connecting…",
-                            style = MaterialTheme.typography.labelMedium, color = cs.primary,
-                        )
+                        Text("Connecting…", style = MaterialTheme.typography.labelMedium, color = cs.primary)
                         Spacer(Modifier.width(Space.sm))
                     }
                     TvIconButton(
                         icon = if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
-                        contentDescription = if (cast.casting)
-                            "Stop casting to ${cast.deviceName}" else "Cast to a device",
+                        contentDescription = if (cast.casting) "Stop casting to ${cast.deviceName}" else "Cast to a device",
                         onClick = { if (cast.casting) cast.disconnect() else showPicker = true },
                         tint = if (cast.casting) cs.primary else Color.White,
                     )
@@ -508,3 +492,37 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
         }
     }
 }
+
+/**
+ * Buffer rules for the chosen pre-buffer: playback starts once [prebufferMs] is loaded, and
+ * after a stall once the larger of that and Media3's usual 5 s is. How far ahead the player
+ * keeps loading stays at Media3's 50 s.
+ */
+private fun loadControlFor(prebufferMs: Int): DefaultLoadControl {
+    val afterStall = maxOf(prebufferMs, DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
+    val minBuffer = maxOf(DefaultLoadControl.DEFAULT_MIN_BUFFER_MS, afterStall)
+    return DefaultLoadControl.Builder()
+        .setBufferDurationsMs(minBuffer, maxOf(DefaultLoadControl.DEFAULT_MAX_BUFFER_MS, minBuffer), prebufferMs, afterStall)
+        .build()
+}
+
+/**
+ * On a live stream Media3 only waits for half the distance to the live edge, whatever the
+ * pre-buffer says, and HLS playlists usually sit just three segments back — so a long
+ * pre-buffer would quietly be cut short. Longer settings therefore also play further behind
+ * live: twice the pre-buffer, and never closer than 30 s, which is behind nearly every
+ * playlist's own choice. The default and shorter keep the playlist's.
+ *
+ * Media3 clamps that offset to what the playlist actually keeps, so a 60 s pre-buffer on a
+ * channel holding 40 s gets 20 s. Raw MPEG-TS has no live window and gets the full amount.
+ */
+private fun mediaItemFor(url: String, prebufferMs: Int): MediaItem =
+    MediaItem.Builder().setUri(url).apply {
+        if (prebufferMs > DEFAULT_PREBUFFER_MS) {
+            setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(maxOf(2L * prebufferMs + 2_000, 30_000L))
+                    .build(),
+            )
+        }
+    }.build()

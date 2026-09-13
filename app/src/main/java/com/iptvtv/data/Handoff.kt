@@ -1,4 +1,4 @@
-package com.iptvtv
+package com.iptvtv.data
 
 import android.content.Context
 import android.content.Intent
@@ -69,8 +69,8 @@ private fun displayName(ctx: Context, uri: Uri): String? = runCatching {
     }
 }.getOrNull()
 
-/** "sports.m3u8" → "sports". Control characters are dropped: the name is stored one row per line. */
-private fun playlistName(raw: String?): String =
+/** "sports.m3u8" → "sports". */
+fun playlistName(raw: String?): String =
     raw.orEmpty()
         .substringAfterLast('/')
         .replace(Regex("""\.m3u8?$""", RegexOption.IGNORE_CASE), "")

@@ -1,4 +1,4 @@
-package com.iptvtv
+package com.iptvtv.ui
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -38,6 +38,20 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.widget.Toast
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import coil.compose.AsyncImage
+import com.iptvtv.model.Channel
 
 /**
  * The app's single focus response, shared by every focusable surface: lift, warm the
@@ -188,4 +202,78 @@ fun TvChip(label: String, selected: Boolean, onClick: () -> Unit) {
             color = if (selected) cs.onPrimaryContainer else cs.onSurface,
         )
     }
+}
+
+/** Section heading: icon and label share one baseline across every row on Home. */
+@Composable
+fun SectionHeader(icon: ImageVector, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(Space.sm))
+        Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** Channel logo, falling back to a drawn mark rather than leaving a hole. */
+@Composable
+fun ChannelLogo(logo: String?, size: Dp) {
+    val shape = MaterialTheme.shapes.small
+    if (logo != null) {
+        AsyncImage(
+            model = logo,
+            contentDescription = null, // decorative: the channel name sits beside it
+            modifier = Modifier.size(size).clip(shape),
+        )
+    } else {
+        Box(
+            Modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerLowest),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Tv, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size * 0.5f),
+            )
+        }
+    }
+}
+
+/** Small advisory marker — geo-blocked, part-time. */
+@Composable
+fun Badge(icon: ImageVector, label: String, tint: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(Space.xs))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1)
+    }
+}
+
+/** Centred full-height state block — loading, error and empty share one layout. */
+@Composable
+fun CenteredState(content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxSize(), Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = Space.xl),
+            content = content,
+        )
+    }
+}
+
+/**
+ * Press-and-hold on a channel puts its stream address on the clipboard, for pasting into
+ * another player — the acestream:// ids in particular are unreadable to retype. Android 13+
+ * shows its own "Copied" confirmation, so the toast is only for older versions.
+ */
+fun copyStreamUrl(ctx: Context, channel: Channel) {
+    val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(channel.clean, channel.url))
+    if (Build.VERSION.SDK_INT < 33) Toast.makeText(ctx, "Stream address copied", Toast.LENGTH_SHORT).show()
+}
+
+fun formatBytes(b: Long): String = when {
+    b >= 1_000_000_000 -> "%.1f GB".format(b / 1e9)
+    b >= 1_000_000 -> "%.1f MB".format(b / 1e6)
+    b >= 1_000 -> "%.0f kB".format(b / 1e3)
+    else -> "$b B"
 }

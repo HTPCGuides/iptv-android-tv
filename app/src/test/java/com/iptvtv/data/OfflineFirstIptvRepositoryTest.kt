@@ -1,0 +1,189 @@
+package com.iptvtv.data
+
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.iptvtv.data.db.IptvDatabase
+import com.iptvtv.model.Source
+import com.iptvtv.model.SourceKind
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.File
+
+/**
+ * The repository against a real in-memory Room database and a fake network, so the SQL
+ * that does the filtering is what is under test — no mocking, per the architecture guide.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])   // Robolectric 4.13 has no Android 15 image yet; the SQL under test is the same
+class OfflineFirstIptvRepositoryTest {
+
+    private val playlists = mutableMapOf<String, String>()
+    private var fetches = 0
+    private var clock = 1_000_000L
+
+    private lateinit var db: IptvDatabase
+    private lateinit var tmp: File
+    private lateinit var repo: OfflineFirstIptvRepository
+
+    private val uk = Source.BUILT_IN.first { it.id == "uk" }
+
+    @Before
+    fun setUp() = runTest {
+        db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), IptvDatabase::class.java)
+            .allowMainThreadQueries().build()
+        tmp = File.createTempFile("iptv", "").apply { delete(); mkdirs() }
+        val store = PreferenceDataStoreFactory.create { File(tmp, "settings.preferences_pb") }
+        repo = OfflineFirstIptvRepository(
+            dao = db.dao(),
+            fetcher = { url -> fetches++; playlists[url] ?: error("no route to $url") },
+            settingsStore = SettingsDataSource(store),
+            cacheDirs = listOf(File(tmp, "cache").apply { mkdirs() }),
+            now = { clock },
+        )
+        repo.seedBuiltIns()
+        playlists[uk.url] = """
+            #EXTINF:-1 group-title="General",BBC One (720p)
+            http://bbc1
+            #EXTINF:-1 group-title="General;News",BBC News (1080p) [Geo-blocked]
+            http://bbcnews
+            #EXTINF:-1 group-title="Music",Kiss TV
+            http://kiss
+        """.trimIndent()
+    }
+
+    @After
+    fun tearDown() {
+        db.close()
+        tmp.deleteRecursively()
+    }
+
+    @Test
+    fun `built-ins are seeded once, in order`() = runTest {
+        repo.seedBuiltIns()   // a second call must not duplicate or reorder
+        assertEquals(Source.BUILT_IN.map { it.id }, repo.sources.first().map { it.id })
+    }
+
+    @Test
+    fun `refresh fetches when stale and is a no-op while fresh`() = runTest {
+        assertEquals(RefreshResult.Updated, repo.refresh(uk))
+        assertEquals(3, repo.channels(uk.id, ChannelFilter()).first().size)
+
+        clock += 60 * 60 * 1000
+        assertEquals(RefreshResult.Fresh, repo.refresh(uk))
+        assertEquals(1, fetches)
+
+        clock += 24 * 60 * 60 * 1000
+        assertEquals(RefreshResult.Updated, repo.refresh(uk))
+        assertEquals(2, fetches)
+    }
+
+    @Test
+    fun `a failed fetch keeps what was stored`() = runTest {
+        repo.refresh(uk)
+        playlists.remove(uk.url)
+        val result = repo.refresh(uk, force = true)
+        assertTrue(result is RefreshResult.Failed)
+        assertEquals(3, repo.channels(uk.id, ChannelFilter()).first().size)
+    }
+
+    @Test
+    fun `filters run in SQL - search, group and geo-blocked`() = runTest {
+        repo.refresh(uk)
+        suspend fun names(f: ChannelFilter) = repo.channels(uk.id, f).first().map { it.clean }
+        assertEquals(listOf("BBC One", "BBC News"), names(ChannelFilter(query = "bbc")))
+        assertEquals(listOf("Kiss TV"), names(ChannelFilter(query = "music")))   // group text matches too
+        assertEquals(listOf("BBC News"), names(ChannelFilter(group = "News")))
+        assertEquals(listOf("BBC One", "BBC News"), names(ChannelFilter(group = "General")))
+        assertEquals(listOf("BBC One", "Kiss TV"), names(ChannelFilter(hideGeoBlocked = true)))
+        assertEquals(listOf("General", "News", "Music"), repo.groups(uk.id).first())
+    }
+
+    @Test
+    fun `favourites are by name and resolve to one channel for Home`() = runTest {
+        playlists[uk.url] += "\n#EXTINF:-1,BBC One (1080p)\nhttp://bbc1-hd"
+        repo.refresh(uk)
+        val bbc = repo.channels(uk.id, ChannelFilter(query = "BBC One")).first()
+        assertEquals(2, bbc.size)
+
+        repo.toggleFavourite(bbc[0])
+        assertEquals(setOf("uk|bbc one"), repo.favourites.first())
+        assertTrue(bbc[1].favKey in repo.favourites.first())   // the other feed counts as the same favourite
+        assertEquals(listOf("BBC One"), repo.favouriteChannels.first().map { it.clean })
+
+        repo.toggleFavourite(bbc[1])
+        assertTrue(repo.favourites.first().isEmpty())
+    }
+
+    @Test
+    fun `recents are most recent first and capped`() = runTest {
+        repo.refresh(uk)
+        val all = repo.channels(uk.id, ChannelFilter()).first()
+        all.forEach { clock++; repo.noteWatched(it) }
+        clock++; repo.noteWatched(all[0])
+        assertEquals(listOf("BBC One", "Kiss TV", "BBC News"), repo.recentChannels.first().map { it.clean })
+    }
+
+    @Test
+    fun `imported files are stored, never fetched, and re-import keeps the row`() = runTest {
+        val text = "#EXTINF:-1,Ace Channel\nhttp://127.0.0.1:6878/ace/getstream?id=1"
+        val source = repo.importFile("ace.test", text)!!
+        assertEquals(SourceKind.FILE, source.kind)
+        assertEquals(RefreshResult.Fresh, repo.refresh(source, force = true))
+        assertEquals(0, fetches)
+
+        repo.renameSource(source.id, "My Ace list")
+        repo.toggleFavourite(repo.channels(source.id, ChannelFilter()).first().single())
+        val again = repo.importFile("ace.test", "$text\n#EXTINF:-1,Second\nhttp://127.0.0.1:6878/ace/getstream?id=2")!!
+        assertEquals(source.id, again.id)
+        assertEquals("My Ace list", repo.source(source.id).first()!!.name)
+        assertEquals(2, repo.channels(source.id, ChannelFilter()).first().size)
+        assertEquals(1, repo.favouriteChannels.first().size)
+
+        assertNull(repo.importFile("empty", "#EXTM3U\n"))
+        assertEquals(1, repo.sources.first().count { it.isFile })
+    }
+
+    @Test
+    fun `removing a source takes its channels, favourites and recents with it`() = runTest {
+        val source = repo.addUrlSource("Mine", "http://mine/list.m3u")
+        playlists[source.url] = "#EXTINF:-1,Only\nhttp://only"
+        repo.refresh(source)
+        val only = repo.channels(source.id, ChannelFilter()).first().single()
+        repo.toggleFavourite(only); repo.noteWatched(only)
+
+        repo.removeSource(source.id)
+        assertTrue(repo.sources.first().none { it.id == source.id })
+        assertTrue(repo.channels(source.id, ChannelFilter()).first().isEmpty())
+        assertTrue(repo.favourites.first().isEmpty())
+        assertTrue(repo.recentChannels.first().isEmpty())
+    }
+
+    @Test
+    fun `clear cache drops downloaded channels but not imported ones`() = runTest {
+        repo.refresh(uk)
+        val file = repo.importFile("f", "#EXTINF:-1,Kept\nhttp://kept")!!
+        repo.clearCache()
+        assertTrue(repo.channels(uk.id, ChannelFilter()).first().isEmpty())
+        assertEquals(1, repo.channels(file.id, ChannelFilter()).first().size)
+        assertEquals(RefreshResult.Updated, repo.refresh(uk))   // stale again, so it re-downloads
+    }
+
+    @Test
+    fun `settings round-trip`() = runTest {
+        assertEquals(2_500, repo.settings.first().prebufferMs)
+        repo.setPrebufferMs(60_000); repo.setSubtitlesOn(true); repo.setHideGeoBlocked(true)
+        val s = repo.settings.first()
+        assertEquals(60_000, s.prebufferMs)
+        assertTrue(s.subtitlesOn && s.hideGeoBlocked)
+    }
+}

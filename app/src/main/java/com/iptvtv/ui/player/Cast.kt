@@ -1,4 +1,4 @@
-package com.iptvtv
+package com.iptvtv.ui.player
 
 import android.content.Context
 import androidx.compose.runtime.Composable

@@ -1,4 +1,4 @@
-package com.iptvtv
+package com.iptvtv.ui
 
 import android.provider.Settings
 import androidx.compose.foundation.shape.RoundedCornerShape
