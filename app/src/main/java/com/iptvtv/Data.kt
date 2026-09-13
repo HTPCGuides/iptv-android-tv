@@ -183,4 +183,13 @@ class Repo(private val ctx: Context) {
     var subtitlesOn: Boolean
         get() = prefs.getBoolean("subs", false)
         set(v) = prefs.edit().putBoolean("subs", v).apply()
+
+    /** How much of a stream to load before playback starts, in ms. Anything unknown reads as the default. */
+    var prebufferMs: Int
+        get() = prefs.getInt("prebuffer", DEFAULT_PREBUFFER_MS).takeIf { it in PREBUFFER_CHOICES } ?: DEFAULT_PREBUFFER_MS
+        set(v) = prefs.edit().putInt("prebuffer", v).apply()
 }
+
+/** Pre-buffer choices, in ms. 2.5 s is Media3's own default, so it stays the default here. */
+val PREBUFFER_CHOICES = listOf(1_000, 2_500, 5_000, 10_000, 30_000, 60_000)
+const val DEFAULT_PREBUFFER_MS = 2_500

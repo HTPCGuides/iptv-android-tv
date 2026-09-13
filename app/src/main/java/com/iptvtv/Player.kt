@@ -71,7 +71,49 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.focusable
+import android.os.SystemClock
+import androidx.media3.exoplayer.DefaultLoadControl
 import kotlinx.coroutines.delay
+
+/** At most this many silent restarts of a dropped stream per [RECOVERY_WINDOW_MS]. */
+private const val MAX_RECOVERIES = 3
+private const val RECOVERY_WINDOW_MS = 60_000L
+
+/**
+ * Buffer rules for the chosen pre-buffer: playback starts once [prebufferMs] is loaded, and
+ * after a stall once the larger of that and Media3's usual 5 s is. How far ahead the player
+ * keeps loading stays at Media3's 50 s.
+ */
+private fun loadControlFor(prebufferMs: Int): DefaultLoadControl {
+    val afterStall = maxOf(prebufferMs, DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
+    val minBuffer = maxOf(DefaultLoadControl.DEFAULT_MIN_BUFFER_MS, afterStall)
+    return DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            minBuffer, maxOf(DefaultLoadControl.DEFAULT_MAX_BUFFER_MS, minBuffer), prebufferMs, afterStall,
+        )
+        .build()
+}
+
+/**
+ * On a live stream Media3 only waits for half the distance to the live edge, whatever the
+ * pre-buffer says, and HLS playlists usually sit just three segments back — so a long
+ * pre-buffer would quietly be cut short. Longer settings therefore also play further behind
+ * live: twice the pre-buffer, and never closer than 30 s, which is behind nearly every
+ * playlist's own choice. The default and shorter keep the playlist's.
+ *
+ * Media3 clamps that offset to what the playlist actually keeps, so a 60 s pre-buffer on a
+ * channel holding 40 s gets 20 s. Raw MPEG-TS has no live window and gets the full amount.
+ */
+private fun mediaItemFor(url: String, prebufferMs: Int): MediaItem =
+    MediaItem.Builder().setUri(url).apply {
+        if (prebufferMs > DEFAULT_PREBUFFER_MS) {
+            setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(maxOf(2L * prebufferMs + 2_000, 30_000L))
+                    .build(),
+            )
+        }
+    }.build()
 
 /**
  * Full-screen player. D-pad: up/down = previous/next channel, centre = toggle the
@@ -103,8 +145,17 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val reducedMotion = LocalReducedMotion.current
 
+    // Live streams drop out mid-play. After a network blip Media3 resumes the load with a
+    // byte-range request, a live server has nothing at that offset to give back (HTTP 416),
+    // and Media3 treats that — ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE — as fatal. Starting
+    // the stream over from the live edge is the fix, so do it quietly; but only a few times a
+    // minute, so a stream that is genuinely broken still reaches the error screen.
+    val recoveries = remember { ArrayDeque<Long>() }
+
     val player = remember {
-        ExoPlayer.Builder(ctx).build().apply {
+        ExoPlayer.Builder(ctx)
+            .setLoadControl(loadControlFor(vm.prebufferMs))
+            .build().apply {
             playWhenReady = true
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
@@ -117,6 +168,21 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                     hasSubtitles = tracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
                 }
                 override fun onPlayerError(e: PlaybackException) {
+                    val droppedOut = e.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
+                        e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
+                    val now = SystemClock.elapsedRealtime()
+                    while (recoveries.isNotEmpty() && now - recoveries.first() > RECOVERY_WINDOW_MS) {
+                        recoveries.removeFirst()
+                    }
+                    val item = currentMediaItem
+                    if (droppedOut && item != null && recoveries.size < MAX_RECOVERIES) {
+                        recoveries.addLast(now)
+                        buffering = true
+                        // Setting the item again is a fresh load: no byte range, live edge.
+                        setMediaItem(item)
+                        prepare()
+                        return
+                    }
                     error = when (e.errorCode) {
                         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
                         PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ->
@@ -124,6 +190,9 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
                         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                             "Couldn't reach the stream — check your connection (or VPN)."
+                        PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+                        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
+                            "This stream keeps dropping out. Try again, or pick a longer pre-buffer in Options."
                         else -> "This stream didn't play (${e.errorCodeName})."
                     }
                     buffering = false
@@ -135,6 +204,7 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
     // (re)load whenever the selected channel changes — also covers channel up/down and retry
     LaunchedEffect(channel.key, cast.casting, reloads) {
         error = null; showInfo = true; pokes++
+        recoveries.clear()   // a new channel, or a deliberate retry, gets the full allowance
         if (cast.casting) {
             // The TV is the screen now. Stop decoding locally — a phone quietly
             // burning battery on a stream nobody is watching is the bug every
@@ -146,7 +216,7 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                 "It works locally — disconnect to watch it here."
         } else {
             buffering = true
-            player.setMediaItem(MediaItem.fromUri(channel.url))
+            player.setMediaItem(mediaItemFor(channel.url, vm.prebufferMs))
             player.prepare()
             player.play()
         }

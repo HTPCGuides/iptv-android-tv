@@ -73,7 +73,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.rounded.Timer
 import kotlinx.coroutines.delay
+
+/** "1 s", "2.5 s" — whole seconds without a stray ".0", decimals in the user's own format. */
+private fun prebufferLabel(ms: Int) =
+    if (ms % 1000 == 0) "${ms / 1000} s" else "%.1f s".format(ms / 1000f)
 
 fun formatBytes(b: Long): String = when {
     b >= 1_000_000_000 -> "%.1f GB".format(b / 1e9)
@@ -231,6 +237,42 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit, onPlay: (Channel) ->
                         "They only play from inside their own country — leave them shown if you use a VPN.",
                         style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                     )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(Space.md))
+        // A plain card holding sibling chips, not one clickable row: a focusable nested in
+        // a focusable is skipped by the D-pad, which would put the choices out of reach.
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .background(cs.surfaceContainer)
+                .border(1.dp, cs.outlineVariant, MaterialTheme.shapes.medium)
+                .padding(horizontal = Space.lg, vertical = Space.md),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Timer, null, tint = cs.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(Space.md))
+                Column {
+                    Text("Pre-buffer", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+                    Text(
+                        "How much of a channel to load before it plays. More rides out a patchy connection, " +
+                            "but channels start slower and play further behind live. Some live channels keep " +
+                            "less than a minute, so the longest settings may not fill. 2.5 s is the usual.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(Space.md))
+            // Indented to the text column, so the choices read as answers to the label above.
+            Row(
+                Modifier.padding(start = 24.dp + Space.md),
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            ) {
+                PREBUFFER_CHOICES.forEach { ms ->
+                    TvChip(prebufferLabel(ms), vm.prebufferMs == ms) { vm.choosePrebuffer(ms) }
                 }
             }
         }

@@ -154,6 +154,12 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleSubtitles() { subtitlesOn = !subtitlesOn; repo.subtitlesOn = subtitlesOn }
 
+    /** Read when the player opens, so a change takes effect from the next channel started. */
+    var prebufferMs by mutableStateOf(repo.prebufferMs)
+        private set
+
+    fun choosePrebuffer(ms: Int) { prebufferMs = ms; repo.prebufferMs = ms }
+
     fun addSource(name: String, url: String) {
         repo.addCustomSource(name, url)
         sources = repo.sources()
