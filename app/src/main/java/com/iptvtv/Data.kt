@@ -35,7 +35,7 @@ data class Channel(
         get() = group.split(';').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("Other") }
 }
 
-/** A playlist source — the four built-ins, plus anything the user adds. */
+/** A playlist source — the four built-ins, plus anything the user adds or another app hands over. */
 data class Source(
     val id: String,
     val name: String,
@@ -43,7 +43,17 @@ data class Source(
     val builtIn: Boolean = true,
     val emoji: String = "📺",
 ) {
+    /**
+     * Stored from a file another app handed over. Its channels come from our own copy: the
+     * content:// URI it arrived on is only readable during the hand-off, so there is nothing
+     * to fetch again later.
+     */
+    val isFile get() = url.startsWith(IMPORTED_SCHEME)
+
     companion object {
+        /** Stands in for a URL on an imported file, followed by the file's name. */
+        const val IMPORTED_SCHEME = "imported:"
+
         val BUILT_IN = listOf(
             Source("uk", "United Kingdom", "https://iptv-org.github.io/iptv/countries/uk.m3u", emoji = "🇬🇧"),
             Source("dk", "Denmark", "https://iptv-org.github.io/iptv/countries/dk.m3u", emoji = "🇩🇰"),
@@ -96,6 +106,9 @@ private const val SEP = "\u001F"   // delimiter for the stored "name<SEP>url" ro
 class Repo(private val ctx: Context) {
     private val prefs = ctx.getSharedPreferences("iptv", Context.MODE_PRIVATE)
     private val cacheDir = File(ctx.filesDir, "playlists").apply { mkdirs() }
+    // Imported files live apart from the download cache: "Clear cached data" empties that
+    // folder and promises to keep your playlists, and for a file our copy is the playlist.
+    private val importedDir = File(ctx.filesDir, "imported").apply { mkdirs() }
 
     // ---- sources ----
     fun sources(): List<Source> = Source.BUILT_IN + customSources()
@@ -107,21 +120,52 @@ class Repo(private val ctx: Context) {
             else null
         }
 
+    /** Names are stored one row per line with SEP between fields, so neither may appear in one. */
+    private fun rowName(name: String) =
+        name.replace("\n", " ").replace(SEP, " ").trim().ifBlank { "My playlist" }
+
     fun addCustomSource(name: String, url: String) {
         val rows = (prefs.getString("custom", "") ?: "").split("\n").filter { it.isNotBlank() }.toMutableList()
-        rows.add("${name.ifBlank { "My playlist" }}$SEP${url.trim()}")
+        rows.add("${rowName(name)}$SEP${url.trim()}")
         prefs.edit().putString("custom", rows.joinToString("\n")).apply()
     }
 
     fun removeCustomSource(url: String) {
+        customSources().firstOrNull { it.url == url && it.isFile }?.let { importedCopy(it).delete() }
         val rows = (prefs.getString("custom", "") ?: "").split("\n")
             .filter { it.isNotBlank() && !it.endsWith("$SEP$url") }
         prefs.edit().putString("custom", rows.joinToString("\n")).apply()
     }
 
+    fun renameCustomSource(url: String, name: String) {
+        val rows = (prefs.getString("custom", "") ?: "").split("\n").filter { it.isNotBlank() }
+            .map { row -> if (row.endsWith("$SEP$url")) "${rowName(name)}$SEP$url" else row }
+        prefs.edit().putString("custom", rows.joinToString("\n")).apply()
+    }
+
+    private fun importedCopy(source: Source) = File(importedDir, source.id + ".m3u")
+
+    /**
+     * Stores a playlist file another app handed over. The same file name handed over again
+     * replaces the copy but keeps the row — and with it the id, so a rename and any
+     * favourites made in the meantime survive a regenerated playlist.
+     */
+    fun importFile(name: String, text: String): Source {
+        val url = Source.IMPORTED_SCHEME + name.lowercase()
+        if (customSources().none { it.url == url }) addCustomSource(name, url)
+        val source = customSources().first { it.url == url }
+        importedCopy(source).writeText(text)
+        return source
+    }
+
     // ---- playlists ----
     /** Cached copy if fresh (24h) or offline; otherwise download. BLOCKING — call off the main thread. */
     fun load(source: Source, forceRefresh: Boolean = false): List<Channel> {
+        // A file has no address to refresh from; re-reading our copy is the refresh.
+        if (source.isFile) {
+            val copy = importedCopy(source)
+            return if (copy.exists()) M3uParser.parse(copy.readText(), source.id) else emptyList()
+        }
         val f = File(cacheDir, source.id + ".m3u")
         val fresh = f.exists() && System.currentTimeMillis() - f.lastModified() < 24 * 60 * 60 * 1000
         if (!forceRefresh && fresh) return M3uParser.parse(f.readText(), source.id)

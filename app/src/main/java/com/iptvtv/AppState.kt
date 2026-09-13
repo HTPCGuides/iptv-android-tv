@@ -99,7 +99,10 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
             val list = withContext(Dispatchers.IO) { repo.load(source, refresh) }
             channels = list
             loading = false
-            if (list.isEmpty()) error = "Couldn't load this playlist. Check the connection and try Refresh."
+            if (list.isEmpty()) {
+                error = if (source.isFile) "This playlist's stored copy is missing. Open the file again from the app that made it."
+                else "Couldn't load this playlist. Check the connection and try Refresh."
+            }
         }
     }
 
@@ -159,6 +162,41 @@ class IptvViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     fun choosePrebuffer(ms: Int) { prebufferMs = ms; repo.prebufferMs = ms }
+
+    /** Why a playlist another app handed over couldn't be opened; cleared once seen. */
+    var importError by mutableStateOf<String?>(null)
+
+    /**
+     * Stores a handed-over playlist file and opens it. A file without channels is refused
+     * rather than stored, so it can't leave an empty tile on Home. Returns whether it opened.
+     */
+    suspend fun importPlaylist(name: String, text: String): Boolean {
+        val source = withContext(Dispatchers.IO) {
+            if (M3uParser.parse(text, "").isEmpty()) null else repo.importFile(name, text)
+        }
+        if (source == null) {
+            importError = "“$name” doesn't contain any channels."
+            return false
+        }
+        sources = repo.sources()
+        open(source)
+        return true
+    }
+
+    /** A playlist handed over as a web address is kept like one typed into Add playlist. */
+    fun followPlaylistLink(name: String, url: String) {
+        if (sources.none { it.url == url }) {
+            repo.addCustomSource(name, url)
+            sources = repo.sources()
+        }
+        sources.firstOrNull { it.url == url }?.let { open(it) }
+    }
+
+    fun renameSource(s: Source, name: String) {
+        repo.renameCustomSource(s.url, name)
+        sources = repo.sources()
+        if (currentSource?.url == s.url) currentSource = sources.firstOrNull { it.url == s.url }
+    }
 
     fun addSource(name: String, url: String) {
         repo.addCustomSource(name, url)

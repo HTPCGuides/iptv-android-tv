@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Edit
 import kotlinx.coroutines.delay
 
 /** "1 s", "2.5 s" — whole seconds without a stray ".0", decimals in the user's own format. */
@@ -182,7 +183,11 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit, onPlay: (Channel) ->
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                if (s.builtIn) "iptv-org" else "Custom playlist",
+                                when {
+                                    s.builtIn -> "iptv-org"
+                                    s.isFile -> "Imported file"
+                                    else -> "Custom playlist"
+                                },
                                 style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                             )
                         }
@@ -379,6 +384,27 @@ private fun AddPlaylistDialog(onAdd: (String, String) -> Unit, onCancel: () -> U
 }
 
 @Composable
+private fun RenamePlaylistDialog(current: String, onRename: (String) -> Unit, onCancel: () -> Unit) {
+    var name by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Rename playlist") },
+        text = {
+            OutlinedTextField(
+                name, { name = it }, label = { Text("Name") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (name.isNotBlank()) onRename(name.trim()) }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onRename(name.trim()) }, enabled = name.isNotBlank()) { Text("Rename") }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+@Composable
 fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> Unit) {
     val list = vm.visible
     val cs = MaterialTheme.colorScheme
@@ -431,11 +457,29 @@ fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> U
                 }
             }
             Spacer(Modifier.width(Space.md))
-            TvIconButton(
-                Icons.Rounded.Refresh, "Reload this playlist",
-                { vm.currentSource?.let { vm.open(it, refresh = true) } },
-                tint = cs.onSurface,
-            )
+            val source = vm.currentSource
+            // Playlists you added or were handed can be renamed; a file arrives named after
+            // whatever its sender called it.
+            if (source != null && !source.builtIn) {
+                var renaming by remember { mutableStateOf(false) }
+                TvIconButton(Icons.Rounded.Edit, "Rename this playlist", { renaming = true }, tint = cs.onSurface)
+                if (renaming) {
+                    RenamePlaylistDialog(
+                        current = source.name,
+                        onRename = { vm.renameSource(source, it); renaming = false },
+                        onCancel = { renaming = false },
+                    )
+                }
+            }
+            // A file has nowhere to reload from — our stored copy is the playlist — and a
+            // button that does nothing is worse than none.
+            if (source?.isFile != true) {
+                TvIconButton(
+                    Icons.Rounded.Refresh, "Reload this playlist",
+                    { source?.let { vm.open(it, refresh = true) } },
+                    tint = cs.onSurface,
+                )
+            }
         }
 
         Spacer(Modifier.height(Space.lg))
