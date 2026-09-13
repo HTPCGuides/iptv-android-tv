@@ -72,6 +72,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.focusable
 import android.os.SystemClock
+import android.util.Log
 import androidx.media3.exoplayer.DefaultLoadControl
 import kotlinx.coroutines.delay
 
@@ -177,6 +178,8 @@ fun PlayerScreen(vm: IptvViewModel, exitLabel: String, onExit: () -> Unit) {
                     val item = currentMediaItem
                     if (droppedOut && item != null && recoveries.size < MAX_RECOVERIES) {
                         recoveries.addLast(now)
+                        // Nothing on screen marks a silent restart; the log is how to see them.
+                        Log.i("iptv", "stream dropped out (${e.errorCodeName}), restarting from live: ${recoveries.size}/$MAX_RECOVERIES this minute")
                         buffering = true
                         // Setting the item again is a fresh load: no byte range, live edge.
                         setMediaItem(item)
