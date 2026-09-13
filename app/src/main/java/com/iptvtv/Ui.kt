@@ -73,10 +73,27 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Edit
 import kotlinx.coroutines.delay
+
+/**
+ * Press-and-hold on a channel puts its stream address on the clipboard, for pasting into
+ * another player — the acestream:// ids in particular are unreadable to retype. Android 13+
+ * shows its own "Copied" confirmation, so the toast is only for older versions.
+ */
+private fun copyStreamUrl(ctx: Context, c: Channel) {
+    val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(c.clean, c.url))
+    if (Build.VERSION.SDK_INT < 33) Toast.makeText(ctx, "Stream address copied", Toast.LENGTH_SHORT).show()
+}
 
 /** "1 s", "2.5 s" — whole seconds without a stray ".0", decimals in the user's own format. */
 private fun prebufferLabel(ms: Int) =
@@ -319,6 +336,7 @@ fun HomeScreen(vm: IptvViewModel, onOpen: (Source) -> Unit, onPlay: (Channel) ->
 /** Compact horizontal channel tiles for the Home favourites / recents rows. */
 @Composable
 private fun ChannelRow(list: List<Channel>, vm: IptvViewModel, onPlay: (Channel) -> Unit) {
+    val ctx = LocalContext.current
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(Space.md),
         contentPadding = PaddingValues(horizontal = Space.xs, vertical = Space.sm),
@@ -326,6 +344,7 @@ private fun ChannelRow(list: List<Channel>, vm: IptvViewModel, onPlay: (Channel)
         items(list, key = { it.key }) { c ->
             TvSurface(
                 onClick = { vm.play(c, list); onPlay(c) },
+                onLongClick = { copyStreamUrl(ctx, c) },
                 modifier = Modifier.width(212.dp).height(76.dp),
                 contentPadding = PaddingValues(Space.md),
             ) {
@@ -408,6 +427,7 @@ private fun RenamePlaylistDialog(current: String, onRename: (String) -> Unit, on
 fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> Unit) {
     val list = vm.visible
     val cs = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
     val filtered = vm.query.isNotBlank() || vm.group != null
     val focusManager = LocalFocusManager.current
     val listFocus = remember { FocusRequester() }
@@ -582,6 +602,7 @@ fun ChannelsScreen(vm: IptvViewModel, onPlay: (Channel) -> Unit, onBack: () -> U
                     ) {
                       TvSurface(
                         onClick = { vm.play(c, list); onPlay(c) },
+                        onLongClick = { copyStreamUrl(ctx, c) },
                         modifier = Modifier.weight(1f),
                         peakScale = 1.02f,
                         contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.sm),

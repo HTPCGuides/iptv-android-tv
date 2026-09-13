@@ -6,7 +6,9 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -56,6 +58,7 @@ private fun focusMotion(focused: Boolean, peak: Float): Float {
 
 /** A focusable card. `peakScale` is trimmed for full-width rows so they don't clip at the edges. */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun TvSurface(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -63,6 +66,7 @@ fun TvSurface(
     peakScale: Float = 1.05f,
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.lg, vertical = Space.md),
     contentAlignment: Alignment = Alignment.TopStart,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -85,7 +89,7 @@ fun TvSurface(
             .background(if (focused) cs.surfaceContainerHighest else cs.surfaceContainer)
             .border(if (focused) 2.dp else 1.dp, if (focused) cs.primary else cs.outlineVariant, shape)
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(contentPadding),
     ) { content(focused) }
 }
