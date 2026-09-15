@@ -239,7 +239,7 @@ private fun ChannelRow(list: List<Channel>, onPlay: (Channel, List<Channel>) -> 
                 contentPadding = PaddingValues(Space.md),
             ) {
                 Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                    ChannelLogo(c.logo, 40.dp)
+                    ChannelLogo(c.logo, 40.dp, c.groups.first())
                     Spacer(Modifier.width(Space.md))
                     Column {
                         Text(

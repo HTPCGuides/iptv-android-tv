@@ -169,7 +169,7 @@ fun TvActionButton(
 
 /** Filter pill. Selection is carried by the fill, not by a character prefix. */
 @Composable
-fun TvChip(label: String, selected: Boolean, onClick: () -> Unit) {
+fun TvChip(label: String, selected: Boolean, icon: ImageVector? = null, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val scale = focusMotion(focused, 1.08f)
     val cs = MaterialTheme.colorScheme
@@ -196,11 +196,15 @@ fun TvChip(label: String, selected: Boolean, onClick: () -> Unit) {
             .padding(horizontal = Space.lg, vertical = Space.sm),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) cs.onPrimaryContainer else cs.onSurface,
-        )
+        val fg = if (selected) cs.onPrimaryContainer else cs.onSurface
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                // Quieter than the label at rest; it identifies the chip, the text names it.
+                Icon(icon, null, tint = if (selected) fg else cs.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(Space.sm))
+            }
+            Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+        }
     }
 }
 
@@ -214,9 +218,13 @@ fun SectionHeader(icon: ImageVector, label: String) {
     }
 }
 
-/** Channel logo, falling back to a drawn mark rather than leaving a hole. */
+/**
+ * Channel logo. Without one, the channel's group stands in — its glyph in the group's
+ * tint on a faint wash of the same — so a list of logo-less channels still reads at a
+ * glance instead of showing a column of identical television icons.
+ */
 @Composable
-fun ChannelLogo(logo: String?, size: Dp) {
+fun ChannelLogo(logo: String?, size: Dp, group: String = "Other") {
     val shape = MaterialTheme.shapes.small
     if (logo != null) {
         AsyncImage(
@@ -225,15 +233,12 @@ fun ChannelLogo(logo: String?, size: Dp) {
             modifier = Modifier.size(size).clip(shape),
         )
     } else {
+        val tint = groupTint(group)
         Box(
-            Modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerLowest),
+            Modifier.size(size).clip(shape).background(tint.copy(alpha = .14f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                Icons.Rounded.Tv, null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(size * 0.5f),
-            )
+            Icon(groupIcon(group), null, tint = tint, modifier = Modifier.size(size * 0.5f))
         }
     }
 }

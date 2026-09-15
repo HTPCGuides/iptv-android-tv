@@ -67,7 +67,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptvtv.model.Channel
 import com.iptvtv.model.Source
+import com.iptvtv.ui.AllGroupsIcon
 import com.iptvtv.ui.Badge
+import com.iptvtv.ui.groupIcon
 import com.iptvtv.ui.CenteredState
 import com.iptvtv.ui.ChannelLogo
 import com.iptvtv.ui.Space
@@ -168,9 +170,9 @@ fun ChannelsScreen(
                 horizontalArrangement = Arrangement.spacedBy(Space.sm),
                 contentPadding = PaddingValues(horizontal = Space.xs, vertical = Space.xs),
             ) {
-                item { TvChip("All", success.group == null) { onGroupChange(null) } }
+                item { TvChip("All", success.group == null, AllGroupsIcon) { onGroupChange(null) } }
                 items(success.groups, key = { it }) { g ->
-                    TvChip(g, success.group == g) { onGroupChange(g) }
+                    TvChip(g, success.group == g, groupIcon(g)) { onGroupChange(g) }
                 }
             }
         }
@@ -301,7 +303,7 @@ private fun ChannelList(
                     contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.sm),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        ChannelLogo(c.logo, 48.dp)
+                        ChannelLogo(c.logo, 48.dp, c.groups.first())
                         Spacer(Modifier.width(Space.md))
                         Column(Modifier.weight(1f)) {
                             Text(
