@@ -30,7 +30,10 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|navigation">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|navigation">
+            <!-- ^ Folding a OnePlus Open changes smallestScreenSize and density as well as
+                 screenSize; without those two here the activity was recreated on every
+                 fold, and the player with it. Compose re-lays out on its own. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

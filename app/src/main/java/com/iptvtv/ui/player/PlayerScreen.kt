@@ -115,8 +115,14 @@ fun PlayerRoute(
     viewModel: PlayerViewModel = containerViewModel { c, _ -> PlayerViewModel(c.repository, c.playback) },
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    // Leaving the screen, by any route, ends playback: there is no background audio.
-    DisposableEffect(Unit) { onDispose { viewModel.stop() } }
+    // Leaving the screen, by any route, ends playback: there is no background audio. An
+    // activity being rebuilt for a configuration change is not leaving — on a foldable,
+    // stopping here made the stream vanish at the fold — so playback is kept for the
+    // rebuilt screen to pick up.
+    val activity = LocalContext.current as? Activity
+    DisposableEffect(Unit) {
+        onDispose { if (activity?.isChangingConfigurations != true) viewModel.stop() }
+    }
     PlayerScreen(
         uiState = uiState,
         exitLabel = exitLabel,
