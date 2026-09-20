@@ -271,9 +271,26 @@ fun CenteredState(content: @Composable ColumnScope.() -> Unit) {
  * shows its own "Copied" confirmation, so the toast is only for older versions.
  */
 fun copyStreamUrl(ctx: Context, channel: Channel) {
+    // An Ace Stream channel arrives as an engine URL (http://127.0.0.1:6878/ace/getstream?
+    // infohash=…), which is only good on the phone that made it. The acestream:// link is
+    // what other players and other people can use, so that is what gets copied.
+    val ace = aceLink(channel.url)
     val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText(channel.clean, channel.url))
-    if (Build.VERSION.SDK_INT < 33) Toast.makeText(ctx, "Stream address copied", Toast.LENGTH_SHORT).show()
+    clipboard.setPrimaryClip(ClipData.newPlainText(channel.clean, ace ?: channel.url))
+    if (Build.VERSION.SDK_INT < 33) {
+        Toast.makeText(ctx, if (ace != null) "Ace Stream link copied" else "Stream address copied", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** The acestream:// link behind an Ace Stream engine URL, or null for any other stream. */
+fun aceLink(url: String): String? {
+    if (!url.contains("/ace/", ignoreCase = true)) return null
+    val query = url.substringAfter('?', "")
+    val id = query.split('&').asSequence()
+        .map { it.substringBefore('=') to it.substringAfter('=', "") }
+        .firstOrNull { (k, v) -> k in setOf("id", "infohash", "content_id") && v.isNotBlank() }
+        ?.second ?: return null
+    return "acestream://$id"
 }
 
 fun formatBytes(b: Long): String = when {
