@@ -9,6 +9,14 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Android 11+ hides other packages unless asked for: without this the player cannot
+         find the Ace Stream app to offer "Open Ace Stream" when its engine has been stopped. -->
+    <queries>
+        <package android:name="org.acestream.media" />
+        <package android:name="org.acestream.node" />
+        <package android:name="org.acestream.core" />
+    </queries>
+
     <application
         android:name=".IptvApp"
         android:label="@string/app_name"
