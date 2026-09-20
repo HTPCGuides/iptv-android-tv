@@ -502,6 +502,10 @@ fun PlayerScreen(
                     tint = Color.White,
                 )
                 TvIconButton(Icons.Rounded.SkipNext, "Next channel", { onStep(1) }, tint = Color.White)
+                // A fresh load of the same stream, for a picture that has frozen or fallen
+                // behind without the player noticing — the same thing the error screen's
+                // Try again does, reachable while the stream is nominally still playing.
+                TvIconButton(Icons.Rounded.Refresh, "Reload stream", { reloads++; pokes++ }, tint = Color.White)
                 if (canRotate) {
                     TvIconButton(
                         Icons.Rounded.ScreenRotation,
