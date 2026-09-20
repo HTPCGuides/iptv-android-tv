@@ -79,6 +79,7 @@ import androidx.media3.ui.PlayerView
 import com.iptvtv.model.DEFAULT_PREBUFFER_MS
 import com.iptvtv.ui.LocalReducedMotion
 import com.iptvtv.ui.Space
+import com.iptvtv.ui.SystemBars
 import com.iptvtv.ui.TvActionButton
 import com.iptvtv.ui.TvIconButton
 import com.iptvtv.ui.containerViewModel
@@ -244,8 +245,11 @@ fun PlayerScreen(
         if (!showInfo) runCatching { focus.requestFocus() }
     }
 
-    // The system bars are handled by the NavHost, keyed on the current destination, not
-    // here: tying them to this composable's disposal left them hidden after leaving.
+    // Android's bars come and go with the overlay: a tap on the picture shows the channel
+    // bar and the navigation buttons together, and both fade together. The NavHost shows
+    // the bars again on every other destination, so nothing depends on disposal order.
+    SystemBars(hidden = !showInfo)
+
     DisposableEffect(Unit) {
         focus.requestFocus()
         onDispose { player.release() }
