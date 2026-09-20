@@ -1,7 +1,10 @@
 package com.iptvtv.ui.player
 
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.util.Log
@@ -108,6 +111,21 @@ private val DROP_OUT_CODES = setOf(
 /** Tag on an Ace Stream media item: the getstream URL the playlist named, kept for the fallback. */
 private data class AceProgressive(val url: String)
 
+/** On an engine URL these mean the engine itself is not there, rather than the stream. */
+private val ENGINE_DOWN_CODES = setOf(
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+)
+
+/** Something that opens the Ace Stream app on this device, whichever of its packages is installed. */
+private fun aceStreamLaunchIntent(ctx: Context): Intent? =
+    listOf("org.acestream.media", "org.acestream.node", "org.acestream.core")
+        .firstNotNullOfOrNull { ctx.packageManager.getLaunchIntentForPackage(it) }
+        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
 @Composable
 fun PlayerRoute(
     exitLabel: String,
@@ -154,6 +172,9 @@ fun PlayerScreen(
     val settings = playing.settings
     val ctx = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
+    // Set with [error] when the failure is the Ace Stream engine being gone: the error
+    // screen then offers to open it.
+    var engineDown by remember { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(true) }
     var showInfo by remember { mutableStateOf(true) }
     var showPicker by remember { mutableStateOf(false) }
@@ -241,6 +262,19 @@ fun PlayerScreen(
                     hasSubtitles = tracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
                 }
                 override fun onPlayerError(e: PlaybackException) {
+                    // The Ace Stream engine is a background app, and the phone reclaims it
+                    // when it feels like it — a connection refused on 127.0.0.1, or a reply
+                    // that isn't media, means the engine is gone, not the stream. No amount
+                    // of retrying brings it back; opening the app does.
+                    val uri = currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
+                    if (AceStream.isEngineUrl(uri) && e.errorCode in ENGINE_DOWN_CODES) {
+                        Log.i("iptv", "ace engine not answering (${e.errorCodeName})")
+                        engineDown = true
+                        error = "Ace Stream's engine isn't running — the phone stopped it in the background. " +
+                            "Open Ace Stream, then try again. To stop this happening, set Ace Stream's battery use to Unrestricted."
+                        buffering = false
+                        return
+                    }
                     // An Ace Stream channel is played over the engine's HLS endpoint. If the
                     // engine on this phone turns out not to serve it — an old engine, a bad
                     // manifest — fall back once to the progressive stream the playlist named.
@@ -274,7 +308,7 @@ fun PlayerScreen(
 
     // (re)load whenever the selected channel changes — also covers channel up/down and retry
     LaunchedEffect(channel.key, cast.casting, reloads) {
-        error = null; showInfo = true; pokes++
+        error = null; engineDown = false; showInfo = true; pokes++
         recoveries.clear()   // a new channel, or a deliberate retry, gets the full allowance
         if (cast.casting) {
             // The TV is the screen now. Stop decoding locally — a phone quietly
@@ -436,6 +470,13 @@ fun PlayerScreen(
                     // A real button: the old "OK to try again" line was a remote-only
                     // instruction, so on a touchscreen a dead stream had no retry at all.
                     // OK on a remote still retries straight from the player.
+                    val aceApp = remember { aceStreamLaunchIntent(ctx) }
+                    if (engineDown && aceApp != null) {
+                        // Bringing the engine's app to the front restarts the engine; coming
+                        // back here and trying again is then enough.
+                        TvActionButton("Open Ace Stream", { ctx.startActivity(aceApp) }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+                        Spacer(Modifier.height(Space.sm))
+                    }
                     TvActionButton("Try again", { reloads++ }, icon = Icons.Rounded.Refresh)
                     Spacer(Modifier.height(Space.md))
                     Text(
