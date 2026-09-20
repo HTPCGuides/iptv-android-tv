@@ -20,7 +20,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.WarningAmber
+import com.iptvtv.ui.appContainer
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.History
@@ -70,11 +77,13 @@ import com.iptvtv.ui.formatBytes
 fun HomeRoute(
     onOpenSource: (Source) -> Unit,
     onPlay: () -> Unit,
-    viewModel: HomeViewModel = containerViewModel { c, _ -> HomeViewModel(c.repository, c.playback, c.ready) },
+    viewModel: HomeViewModel = containerViewModel { c, _ -> HomeViewModel(c.repository, c.playback, c.ready, c.aceEngine) },
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    // Logos and playlists downloaded while we were away change the size shown under Options.
-    LaunchedEffect(Unit) { viewModel.refreshCacheSize() }
+    val ctx = LocalContext.current
+    val aceEngine = appContainer().aceEngine
+    // Cache size and the engine's state both change while Home is away; re-read on return.
+    LaunchedEffect(Unit) { viewModel.refresh() }
     HomeScreen(
         uiState = uiState,
         onOpenSource = onOpenSource,
@@ -84,6 +93,9 @@ fun HomeRoute(
         onHideGeoBlocked = viewModel::setHideGeoBlocked,
         onChoosePrebuffer = viewModel::choosePrebuffer,
         onClearCache = viewModel::clearCache,
+        onOpenAceStream = { aceEngine.open()?.let(ctx::startActivity) },
+        onAceStreamSettings = { aceEngine.appSettings()?.let(ctx::startActivity) },
+        onCheckAceEngine = viewModel::refresh,
     )
 }
 
@@ -97,6 +109,9 @@ fun HomeScreen(
     onHideGeoBlocked: (Boolean) -> Unit,
     onChoosePrebuffer: (Int) -> Unit,
     onClearCache: () -> Unit,
+    onOpenAceStream: () -> Unit = {},
+    onAceStreamSettings: () -> Unit = {},
+    onCheckAceEngine: () -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     when (uiState) {
@@ -105,6 +120,7 @@ fun HomeScreen(
         }
         is HomeUiState.Ready -> HomeContent(
             uiState, onOpenSource, onPlay, onAddSource, onRemoveSource, onHideGeoBlocked, onChoosePrebuffer, onClearCache,
+            onOpenAceStream, onAceStreamSettings, onCheckAceEngine,
         )
     }
 }
@@ -119,6 +135,9 @@ private fun HomeContent(
     onHideGeoBlocked: (Boolean) -> Unit,
     onChoosePrebuffer: (Int) -> Unit,
     onClearCache: () -> Unit,
+    onOpenAceStream: () -> Unit,
+    onAceStreamSettings: () -> Unit,
+    onCheckAceEngine: () -> Unit,
 ) {
     var showAdd by remember { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
@@ -185,6 +204,13 @@ private fun HomeContent(
         SectionHeader(Icons.Rounded.Tune, "Options")
         Spacer(Modifier.height(Space.md))
         OptionsSection(state.settings, state.cacheBytes, onHideGeoBlocked, onChoosePrebuffer, onClearCache)
+
+        if (state.aceEngine != AceEngineState.NOT_INSTALLED) {
+            Spacer(Modifier.height(Space.xl))
+            SectionHeader(Icons.Rounded.Memory, "Ace Stream engine")
+            Spacer(Modifier.height(Space.md))
+            AceEngineCard(state.aceEngine, onOpenAceStream, onAceStreamSettings, onCheckAceEngine)
+        }
         Spacer(Modifier.height(Space.xl))
 
         if (showAdd) {
@@ -334,6 +360,62 @@ private fun OptionsSection(
             }
             Spacer(Modifier.width(Space.md))
             Text(formatBytes(cacheBytes), style = MaterialTheme.typography.labelLarge, color = cs.primary)
+        }
+    }
+}
+
+/**
+ * Ace Stream channels play through the engine app on this phone, and OxygenOS kills that
+ * app in the background — which is what "the stream keeps stopping" was. This says whether
+ * the engine is up, starts it, and takes you to the one setting that stops the killing.
+ */
+@Composable
+private fun AceEngineCard(
+    engine: AceEngineState,
+    onOpen: () -> Unit,
+    onSettings: () -> Unit,
+    onCheck: () -> Unit,
+) {
+    val cs = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(cs.surfaceContainer)
+            .border(1.dp, cs.outlineVariant, MaterialTheme.shapes.medium)
+            .padding(horizontal = Space.lg, vertical = Space.md),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val (label, tint) = when (engine) {
+                AceEngineState.RUNNING -> "Engine running" to cs.primary
+                AceEngineState.STOPPED -> "Engine not running" to cs.tertiary
+                else -> "Checking the engine…" to cs.onSurfaceVariant
+            }
+            Icon(
+                if (engine == AceEngineState.RUNNING) Icons.Rounded.CheckCircle else Icons.Rounded.WarningAmber,
+                null, tint = tint, modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(Space.md))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+                Text(
+                    "Ace Stream channels play through the engine in the Ace Stream app. The phone stops that " +
+                        "app in the background to save battery, and the stream stops with it. Allow it to run " +
+                        "unrestricted — Battery → Unrestricted on its settings page — and it stays up.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(Space.md))
+        Row(
+            Modifier.padding(start = 24.dp + Space.md),
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
+            TvActionButton("Allow in background", onSettings, icon = Icons.Rounded.BatterySaver)
+            if (engine == AceEngineState.STOPPED) {
+                TvActionButton("Start engine", onOpen, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+            }
+            TvActionButton("Check again", onCheck, icon = Icons.Rounded.Refresh)
         }
     }
 }

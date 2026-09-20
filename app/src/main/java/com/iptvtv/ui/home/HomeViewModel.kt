@@ -2,6 +2,7 @@ package com.iptvtv.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptvtv.data.AceEngine
 import com.iptvtv.data.IptvRepository
 import com.iptvtv.data.PlaybackSession
 import com.iptvtv.model.Channel
@@ -25,20 +26,26 @@ sealed interface HomeUiState {
         val recents: List<Channel>,
         val settings: Settings,
         val cacheBytes: Long,
+        val aceEngine: AceEngineState,
     ) : HomeUiState
 }
+
+/** What Home can say about the Ace Stream engine. */
+enum class AceEngineState { NOT_INSTALLED, CHECKING, RUNNING, STOPPED }
 
 class HomeViewModel(
     private val repo: IptvRepository,
     private val playback: PlaybackSession,
     private val ready: Job,
+    private val aceEngine: AceEngine,
 ) : ViewModel() {
 
     private val cacheBytes = MutableStateFlow(0L)
     private val seeded = MutableStateFlow(false)
+    private val engine = MutableStateFlow(if (aceEngine.installed) AceEngineState.CHECKING else AceEngineState.NOT_INSTALLED)
 
     val uiState: StateFlow<HomeUiState> = combine(
-        seeded, repo.sources, repo.favouriteChannels, repo.recentChannels, repo.settings, cacheBytes,
+        seeded, repo.sources, repo.favouriteChannels, repo.recentChannels, repo.settings, cacheBytes, engine,
     ) { values ->
         if (values[0] != true) HomeUiState.Loading
         else @Suppress("UNCHECKED_CAST") HomeUiState.Ready(
@@ -47,15 +54,22 @@ class HomeViewModel(
             recents = values[3] as List<Channel>,
             settings = values[4] as Settings,
             cacheBytes = values[5] as Long,
+            aceEngine = values[6] as AceEngineState,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
 
     init {
-        viewModelScope.launch { ready.join(); seeded.value = true; refreshCacheSize() }
+        viewModelScope.launch { ready.join(); seeded.value = true; refresh() }
     }
 
-    fun refreshCacheSize() {
+    /** Re-reads what changes while Home is away: cache size, and whether the engine is up. */
+    fun refresh() {
         viewModelScope.launch { cacheBytes.value = repo.cacheBytes() }
+        if (aceEngine.installed) {
+            viewModelScope.launch {
+                engine.value = if (aceEngine.running()) AceEngineState.RUNNING else AceEngineState.STOPPED
+            }
+        }
     }
 
     fun play(channel: Channel, queue: List<Channel>) {
@@ -80,6 +94,6 @@ class HomeViewModel(
     }
 
     fun clearCache() {
-        viewModelScope.launch { repo.clearCache(); refreshCacheSize() }
+        viewModelScope.launch { repo.clearCache(); refresh() }
     }
 }

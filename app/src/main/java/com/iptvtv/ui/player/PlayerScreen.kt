@@ -1,10 +1,11 @@
 package com.iptvtv.ui.player
 
 import android.app.Activity
-import android.content.Context
-import android.content.Intent
 import android.content.pm.ActivityInfo
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.BatterySaver
+import com.iptvtv.ui.appContainer
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.util.Log
@@ -119,12 +120,6 @@ private val ENGINE_DOWN_CODES = setOf(
     PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
     PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
 )
-
-/** Something that opens the Ace Stream app on this device, whichever of its packages is installed. */
-private fun aceStreamLaunchIntent(ctx: Context): Intent? =
-    listOf("org.acestream.media", "org.acestream.node", "org.acestream.core")
-        .firstNotNullOfOrNull { ctx.packageManager.getLaunchIntentForPackage(it) }
-        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
 @Composable
 fun PlayerRoute(
@@ -470,11 +465,15 @@ fun PlayerScreen(
                     // A real button: the old "OK to try again" line was a remote-only
                     // instruction, so on a touchscreen a dead stream had no retry at all.
                     // OK on a remote still retries straight from the player.
-                    val aceApp = remember { aceStreamLaunchIntent(ctx) }
-                    if (engineDown && aceApp != null) {
+                    val aceEngine = appContainer().aceEngine
+                    if (engineDown && aceEngine.installed) {
                         // Bringing the engine's app to the front restarts the engine; coming
-                        // back here and trying again is then enough.
-                        TvActionButton("Open Ace Stream", { ctx.startActivity(aceApp) }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+                        // back here and trying again is then enough. The settings page is
+                        // where the phone is told to stop killing it.
+                        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                            TvActionButton("Open Ace Stream", { aceEngine.open()?.let(ctx::startActivity) }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+                            TvActionButton("Allow in background", { aceEngine.appSettings()?.let(ctx::startActivity) }, icon = Icons.Rounded.BatterySaver)
+                        }
                         Spacer(Modifier.height(Space.sm))
                     }
                     TvActionButton("Try again", { reloads++ }, icon = Icons.Rounded.Refresh)

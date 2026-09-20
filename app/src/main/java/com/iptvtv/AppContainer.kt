@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
+import com.iptvtv.data.AceEngine
 import com.iptvtv.data.HttpPlaylistFetcher
 import com.iptvtv.data.IptvRepository
 import com.iptvtv.data.LegacyMigration
@@ -30,6 +31,7 @@ class AppContainer(app: Application) {
 
     val repository: IptvRepository
     val playback = PlaybackSession()
+    val aceEngine = AceEngine(app)
 
     /** Completes once the built-ins are seeded and any pre-Room data is carried over; screens wait on it. */
     val ready: Job
