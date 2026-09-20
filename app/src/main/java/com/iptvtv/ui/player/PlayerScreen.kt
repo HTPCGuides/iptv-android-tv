@@ -1,7 +1,11 @@
 package com.iptvtv.ui.player
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.util.Log
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -59,13 +63,10 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -243,18 +244,24 @@ fun PlayerScreen(
         if (!showInfo) runCatching { focus.requestFocus() }
     }
 
-    // Immersive playback: hide status/nav bars, restore them when leaving the player.
-    val view = LocalView.current
+    // The system bars are handled by the NavHost, keyed on the current destination, not
+    // here: tying them to this composable's disposal left them hidden after leaving.
     DisposableEffect(Unit) {
         focus.requestFocus()
-        val window = (view.context as? android.app.Activity)?.window
-        val bars = window?.let { WindowInsetsControllerCompat(it, view) }
-        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        bars?.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose {
-            bars?.show(WindowInsetsCompat.Type.systemBars())
-            player.release()
-        }
+        onDispose { player.release() }
+    }
+
+    // The app is landscape everywhere else, but a phone held upright is a fine way to
+    // watch: a control flips the player to portrait and back. The activity declares
+    // orientation in configChanges, so this re-lays out rather than restarting playback.
+    // Only offered where the device can be turned — a TV box gets no rotate button.
+    val activity = ctx as? Activity
+    val canRotate = remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
+    var portrait by remember { mutableStateOf(false) }
+    DisposableEffect(portrait) {
+        activity?.requestedOrientation =
+            if (portrait) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
     }
 
     Box(
@@ -460,6 +467,14 @@ fun PlayerScreen(
                     tint = Color.White,
                 )
                 TvIconButton(Icons.Rounded.SkipNext, "Next channel", { onStep(1) }, tint = Color.White)
+                if (canRotate) {
+                    TvIconButton(
+                        Icons.Rounded.ScreenRotation,
+                        if (portrait) "Rotate to landscape" else "Rotate to portrait",
+                        { portrait = !portrait; pokes++ },
+                        tint = Color.White,
+                    )
+                }
                 TvIconButton(
                     icon = if (settings.subtitlesOn) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionOff,
                     contentDescription = when {
