@@ -75,6 +75,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.ui.PlayerView
 import com.iptvtv.model.DEFAULT_PREBUFFER_MS
 import com.iptvtv.ui.LocalReducedMotion
@@ -155,14 +158,53 @@ fun PlayerScreen(
     // The pre-buffer is read once, when the player is built: a change takes effect from
     // the next channel started, which is what the setting says.
     val player = remember {
-        ExoPlayer.Builder(ctx)
+        // Progressive live streams — raw MPEG-TS, the Ace Stream engine's getstream — are one
+        // endless HTTP body. Media3's default policy retries a failed load from the byte it
+        // had reached, with a Range header; a server that ignores Range (the engine does)
+        // answers with a fresh stream, and the player then skips through it looking for an
+        // offset that never comes, which looks like a stall. So for those streams: no
+        // retry. The error surfaces at once and the listener below restarts from live.
+        val noRetryForProgressiveLive = object : DefaultLoadErrorHandlingPolicy() {
+            override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
+                if (loadErrorInfo.mediaLoadData.dataType == C.DATA_TYPE_MEDIA_PROGRESSIVE_LIVE) C.TIME_UNSET
+                else super.getRetryDelayMsFor(loadErrorInfo)
+        }
+        val sources = DefaultMediaSourceFactory(ctx).setLoadErrorHandlingPolicy(noRetryForProgressiveLive)
+        ExoPlayer.Builder(ctx, sources)
             .setLoadControl(loadControlFor(settings.prebufferMs))
             .build().apply {
             playWhenReady = true
+
+            /** Starts the current item over from the live edge, a few times a minute at most. */
+            fun restart(why: String): Boolean {
+                val now = SystemClock.elapsedRealtime()
+                while (recoveries.isNotEmpty() && now - recoveries.first() > RECOVERY_WINDOW_MS) recoveries.removeFirst()
+                val item = currentMediaItem ?: return false
+                if (recoveries.size >= MAX_RECOVERIES) return false
+                recoveries.addLast(now)
+                // Nothing on screen marks a silent restart; the log is how to see them.
+                Log.i("iptv", "stream $why, restarting from live: ${recoveries.size}/$MAX_RECOVERIES this minute")
+                buffering = true
+                // Setting the item again is a fresh load: no byte range, live edge.
+                setMediaItem(item)
+                prepare()
+                return true
+            }
+
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     buffering = state == Player.STATE_BUFFERING
                     if (state == Player.STATE_READY) error = null
+                    // Live TV has no end. A stream that "ends" is a server that closed the
+                    // connection — the engine does this between sessions — so start over
+                    // rather than sit on a frozen last frame.
+                    if (state == Player.STATE_ENDED) {
+                        error = when {
+                            !isCurrentMediaItemLive -> "This stream has ended."
+                            restart("ended") -> null
+                            else -> "This stream keeps stopping. Try again, or pick a longer pre-buffer in Options."
+                        }
+                    }
                 }
                 override fun onTracksChanged(tracks: Tracks) {
                     // Only offer the control when the stream actually carries text —
@@ -171,22 +213,10 @@ fun PlayerScreen(
                 }
                 override fun onPlayerError(e: PlaybackException) {
                     val droppedOut = e.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
-                        e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
-                    val now = SystemClock.elapsedRealtime()
-                    while (recoveries.isNotEmpty() && now - recoveries.first() > RECOVERY_WINDOW_MS) {
-                        recoveries.removeFirst()
-                    }
-                    val item = currentMediaItem
-                    if (droppedOut && item != null && recoveries.size < MAX_RECOVERIES) {
-                        recoveries.addLast(now)
-                        // Nothing on screen marks a silent restart; the log is how to see them.
-                        Log.i("iptv", "stream dropped out (${e.errorCodeName}), restarting from live: ${recoveries.size}/$MAX_RECOVERIES this minute")
-                        buffering = true
-                        // Setting the item again is a fresh load: no byte range, live edge.
-                        setMediaItem(item)
-                        prepare()
-                        return
-                    }
+                        e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ||
+                        e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                        e.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                    if (droppedOut && restart("dropped out (${e.errorCodeName})")) return
                     error = when (e.errorCode) {
                         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
                         PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ->
@@ -195,7 +225,8 @@ fun PlayerScreen(
                         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                             "Couldn't reach the stream — check your connection (or VPN)."
                         PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
-                        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
+                        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW,
+                        PlaybackException.ERROR_CODE_IO_UNSPECIFIED ->
                             "This stream keeps dropping out. Try again, or pick a longer pre-buffer in Options."
                         else -> "This stream didn't play (${e.errorCodeName})."
                     }
