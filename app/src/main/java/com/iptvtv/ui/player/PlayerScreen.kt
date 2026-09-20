@@ -313,8 +313,10 @@ fun PlayerScreen(
     }
 
     // Android's bars come and go with the overlay: a tap on the picture shows the channel
-    // bar and the navigation buttons together, and both fade together. The NavHost shows
-    // the bars again on every other destination, so nothing depends on disposal order.
+    // bar and the navigation buttons together, and both fade together. This is the only
+    // place that touches the bars — leaving the screen shows them (SystemBars' dispose).
+    // A second writer elsewhere, racing this one during the exit transition, left the bars
+    // visible but transient, with the next screen laid out underneath the status bar.
     SystemBars(hidden = !showInfo)
 
     DisposableEffect(Unit) {
