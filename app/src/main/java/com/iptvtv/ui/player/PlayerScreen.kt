@@ -70,6 +70,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import com.iptvtv.data.AceStream
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
@@ -91,6 +95,18 @@ import kotlinx.coroutines.delay
 /** At most this many silent restarts of a dropped stream per [RECOVERY_WINDOW_MS]. */
 private const val MAX_RECOVERIES = 3
 private const val RECOVERY_WINDOW_MS = 60_000L
+
+/** Errors that mean "the connection went, start over", as opposed to "this can't play". */
+private val DROP_OUT_CODES = setOf(
+    PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+    PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW,
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+    PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+)
+
+/** Tag on an Ace Stream media item: the getstream URL the playlist named, kept for the fallback. */
+private data class AceProgressive(val url: String)
 
 @Composable
 fun PlayerRoute(
@@ -169,7 +185,14 @@ fun PlayerScreen(
                 if (loadErrorInfo.mediaLoadData.dataType == C.DATA_TYPE_MEDIA_PROGRESSIVE_LIVE) C.TIME_UNSET
                 else super.getRetryDelayMsFor(loadErrorInfo)
         }
-        val sources = DefaultMediaSourceFactory(ctx).setLoadErrorHandlingPolicy(noRetryForProgressiveLive)
+        // A peer-to-peer engine can go quiet for a while without being gone. Media3's 8 s
+        // read timeout turned every such pause into a dropped connection; 30 s waits it out.
+        val http = DefaultHttpDataSource.Factory()
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(30_000)
+            .setAllowCrossProtocolRedirects(true)
+        val sources = DefaultMediaSourceFactory(DefaultDataSource.Factory(ctx, http))
+            .setLoadErrorHandlingPolicy(noRetryForProgressiveLive)
         ExoPlayer.Builder(ctx, sources)
             .setLoadControl(loadControlFor(settings.prebufferMs))
             .build().apply {
@@ -212,11 +235,18 @@ fun PlayerScreen(
                     hasSubtitles = tracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
                 }
                 override fun onPlayerError(e: PlaybackException) {
-                    val droppedOut = e.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
-                        e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ||
-                        e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-                        e.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
-                    if (droppedOut && restart("dropped out (${e.errorCodeName})")) return
+                    // An Ace Stream channel is played over the engine's HLS endpoint. If the
+                    // engine on this phone turns out not to serve it — an old engine, a bad
+                    // manifest — fall back once to the progressive stream the playlist named.
+                    val original = currentMediaItem?.localConfiguration?.tag as? AceProgressive
+                    if (original != null && e.errorCode !in DROP_OUT_CODES) {
+                        Log.i("iptv", "engine HLS failed (${e.errorCodeName}), falling back to getstream")
+                        buffering = true
+                        setMediaItem(MediaItem.fromUri(original.url))
+                        prepare()
+                        return
+                    }
+                    if (e.errorCode in DROP_OUT_CODES && restart("dropped out (${e.errorCodeName})")) return
                     error = when (e.errorCode) {
                         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
                         PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ->
@@ -571,7 +601,13 @@ private fun loadControlFor(prebufferMs: Int): DefaultLoadControl {
  * channel holding 40 s gets 20 s. Raw MPEG-TS has no live window and gets the full amount.
  */
 private fun mediaItemFor(url: String, prebufferMs: Int): MediaItem =
-    MediaItem.Builder().setUri(url).apply {
+    MediaItem.Builder().setUri(AceStream.hlsUrl(url)).apply {
+        // Ace Stream: play the engine's HLS form (see AceStream), remembering the original
+        // so a failure can fall back to it.
+        if (AceStream.isProgressive(url)) {
+            setMimeType(MimeTypes.APPLICATION_M3U8)
+            setTag(AceProgressive(url))
+        }
         if (prebufferMs > DEFAULT_PREBUFFER_MS) {
             setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
