@@ -70,7 +70,7 @@ import com.iptvtv.ui.TvActionButton
 import com.iptvtv.ui.TvChip
 import com.iptvtv.ui.TvSurface
 import com.iptvtv.ui.containerViewModel
-import com.iptvtv.ui.copyStreamUrl
+import com.iptvtv.ui.ChannelActions
 import com.iptvtv.ui.formatBytes
 
 @Composable
@@ -252,7 +252,8 @@ private fun SourceTile(s: Source, onClick: () -> Unit) {
 /** Compact horizontal channel tiles for the Home favourites / recents rows. */
 @Composable
 private fun ChannelRow(list: List<Channel>, onPlay: (Channel, List<Channel>) -> Unit) {
-    val ctx = LocalContext.current
+    var held by remember { mutableStateOf<Channel?>(null) }
+    held?.let { ChannelActions(it) { held = null } }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(Space.md),
         contentPadding = PaddingValues(horizontal = Space.xs, vertical = Space.sm),
@@ -260,7 +261,7 @@ private fun ChannelRow(list: List<Channel>, onPlay: (Channel, List<Channel>) -> 
         items(list, key = { it.key }) { c ->
             TvSurface(
                 onClick = { onPlay(c, list) },
-                onLongClick = { copyStreamUrl(ctx, c) },
+                onLongClick = { held = c },
                 modifier = Modifier.width(212.dp).height(76.dp),
                 contentPadding = PaddingValues(Space.md),
             ) {

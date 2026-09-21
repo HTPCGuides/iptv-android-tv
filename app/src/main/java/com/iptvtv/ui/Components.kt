@@ -38,9 +38,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
@@ -51,6 +60,7 @@ import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
+import com.iptvtv.IptvApp
 import com.iptvtv.data.AceStream
 import com.iptvtv.model.Channel
 
@@ -281,6 +291,53 @@ fun copyStreamUrl(ctx: Context, channel: Channel) {
     if (Build.VERSION.SDK_INT < 33) {
         Toast.makeText(ctx, if (ace != null) "Ace Stream link copied" else "Stream address copied", Toast.LENGTH_SHORT).show()
     }
+}
+
+/**
+ * Hands an Ace Stream channel's acestream:// link to the Ace Stream app — that app
+ * specifically, not whichever apps claim the scheme (Ace M3U does too), so there is no
+ * chooser in the way.
+ */
+fun openInAceStream(ctx: Context, channel: Channel) {
+    val link = AceStream.link(channel.url) ?: return
+    val pkg = (ctx.applicationContext as IptvApp).container.aceEngine.installedPackage
+    if (pkg == null) {
+        Toast.makeText(ctx, "Ace Stream isn't installed", Toast.LENGTH_SHORT).show()
+        return
+    }
+    try {
+        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(ctx, "Ace Stream can't open this link", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * What press-and-hold on a channel offers. An ordinary stream has one thing worth doing —
+ * copy its address — so it just does it. An Ace Stream channel has two: copy the
+ * acestream:// link, or open it in the Ace Stream app itself.
+ */
+@Composable
+fun ChannelActions(channel: Channel, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val ace = AceStream.link(channel.url)
+    if (ace == null) {
+        copyStreamUrl(ctx, channel); onDismiss()
+        return
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(channel.clean) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                Text(ace, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TvActionButton("Open in Ace Stream", { openInAceStream(ctx, channel); onDismiss() }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+                TvActionButton("Copy Ace Stream link", { copyStreamUrl(ctx, channel); onDismiss() }, icon = Icons.Rounded.ContentCopy)
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 fun formatBytes(b: Long): String = when {

@@ -78,7 +78,7 @@ import com.iptvtv.ui.TvChip
 import com.iptvtv.ui.TvIconButton
 import com.iptvtv.ui.TvSurface
 import com.iptvtv.ui.containerViewModel
-import com.iptvtv.ui.copyStreamUrl
+import com.iptvtv.ui.ChannelActions
 
 private fun channelCount(n: Int) = if (n == 1) "1 channel" else "$n channels"
 
@@ -284,7 +284,8 @@ private fun ChannelList(
     onToggleFavourite: (Channel) -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
-    val ctx = LocalContext.current
+    var held by remember { mutableStateOf<Channel?>(null) }
+    held?.let { ChannelActions(it) { held = null } }
     LazyColumn(
         modifier = Modifier.focusRequester(listFocus).focusGroup(),
         verticalArrangement = Arrangement.spacedBy(Space.sm),
@@ -297,7 +298,7 @@ private fun ChannelList(
             Row(Modifier.fillMaxWidth().focusGroup(), verticalAlignment = Alignment.CenterVertically) {
                 TvSurface(
                     onClick = { onPlay(c, state.channels) },
-                    onLongClick = { copyStreamUrl(ctx, c) },
+                    onLongClick = { held = c },
                     modifier = Modifier.weight(1f),
                     peakScale = 1.02f,
                     contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.sm),
