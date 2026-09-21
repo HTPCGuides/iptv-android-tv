@@ -2,6 +2,8 @@ package com.iptvtv.ui.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.BatterySaver
@@ -353,17 +355,20 @@ fun PlayerScreen(
         onDispose { player.release() }
     }
 
-    // The app is landscape everywhere else, but a phone held upright is a fine way to
-    // watch: a control flips the player to portrait and back. The activity declares
-    // orientation in configChanges, so this re-lays out rather than restarting playback.
-    // Only offered where the device can be turned — a TV box gets no rotate button.
+    // The player starts the way the device is being held and then holds that orientation
+    // — a stream shouldn't flip because the sofa shifted — and a control switches between
+    // portrait and landscape. The activity declares orientation in configChanges, so the
+    // switch re-lays out rather than restarting playback. Leaving the player hands
+    // orientation back to the device. Only offered where the device can be turned — a TV
+    // box gets no rotate button.
     val activity = ctx as? Activity
     val canRotate = remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
-    var portrait by remember { mutableStateOf(false) }
+    val startedPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
+    var portrait by remember { mutableStateOf(startedPortrait) }
     DisposableEffect(portrait) {
         activity?.requestedOrientation =
             if (portrait) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE }
+        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER }
     }
 
     Box(
