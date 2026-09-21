@@ -96,6 +96,7 @@ import com.iptvtv.ui.SystemBars
 import com.iptvtv.ui.TvActionButton
 import com.iptvtv.ui.TvIconButton
 import com.iptvtv.ui.containerViewModel
+import com.iptvtv.ui.openInAceStream
 import kotlinx.coroutines.delay
 
 /** At most this many silent restarts of a dropped stream per [RECOVERY_WINDOW_MS]. */
@@ -472,11 +473,17 @@ fun PlayerScreen(
                     // OK on a remote still retries straight from the player.
                     val aceEngine = appContainer().aceEngine
                     if (engineDown && aceEngine.installed) {
-                        // Bringing the engine's app to the front restarts the engine; coming
-                        // back here and trying again is then enough. The settings page is
-                        // where the phone is told to stop killing it.
+                        // Handing the channel's own link to the Ace Stream app brings the app
+                        // to the front — which restarts the engine — with this channel already
+                        // loaded, so it can be played there or here (Try again) as preferred.
+                        // The settings page is where the phone is told to stop killing it.
+                        val hasLink = AceStream.link(channel.url) != null
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                            TvActionButton("Open Ace Stream", { aceEngine.open()?.let(ctx::startActivity) }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+                            TvActionButton(
+                                if (hasLink) "Open in Ace Stream" else "Open Ace Stream",
+                                { if (hasLink) openInAceStream(ctx, channel) else aceEngine.open()?.let(ctx::startActivity) },
+                                icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                            )
                             TvActionButton("Allow in background", { aceEngine.appSettings()?.let(ctx::startActivity) }, icon = Icons.Rounded.BatterySaver)
                         }
                         Spacer(Modifier.height(Space.sm))
