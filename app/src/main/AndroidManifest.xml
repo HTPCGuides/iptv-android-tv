@@ -37,9 +37,12 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|navigation">
-            <!-- ^ Folding a OnePlus Open changes smallestScreenSize and density as well as
+            <!-- ^ sensorLandscape, not landscape: a plain "landscape" is one fixed rotation,
+                 and on an unfolded OnePlus Open that came up upside-down for the way it is
+                 held. Either landscape rotation is fine; the sensor picks.
+                 Folding a OnePlus Open changes smallestScreenSize and density as well as
                  screenSize; without those two here the activity was recreated on every
                  fold, and the player with it. Compose re-lays out on its own. -->
             <intent-filter>
