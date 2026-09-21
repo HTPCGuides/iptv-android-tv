@@ -9,8 +9,8 @@ import org.junit.Test
 
 class AceLinkTest {
     @Test
-    fun `engine urls give the acestream link`() {
-        assertEquals("acestream://20db14f6", AceStream.link("http://127.0.0.1:6878/ace/getstream?infohash=20db14f6"))
+    fun `content ids give acestream links, infohashes give magnets`() {
+        assertEquals("magnet:?xt=urn:btih:20db14f6", AceStream.link("http://127.0.0.1:6878/ace/getstream?infohash=20db14f6"))
         assertEquals("acestream://abc", AceStream.link("http://127.0.0.1:6878/ace/manifest.m3u8?id=abc&pid=1"))
         assertEquals("acestream://c1", AceStream.link("http://localhost:6878/ace/getstream?content_id=c1"))
     }

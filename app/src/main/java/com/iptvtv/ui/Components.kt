@@ -332,7 +332,10 @@ fun ChannelActions(channel: Channel, onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 Text(ace, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TvActionButton("Open in Ace Stream", { openInAceStream(ctx, channel); onDismiss() }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
-                TvActionButton("Copy Ace Stream link", { copyStreamUrl(ctx, channel); onDismiss() }, icon = Icons.Rounded.ContentCopy)
+                TvActionButton(
+                    if (ace.startsWith("magnet:")) "Copy magnet link" else "Copy Ace Stream link",
+                    { copyStreamUrl(ctx, channel); onDismiss() }, icon = Icons.Rounded.ContentCopy,
+                )
             }
         },
         confirmButton = {},

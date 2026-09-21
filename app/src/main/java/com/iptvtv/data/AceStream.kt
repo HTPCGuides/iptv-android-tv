@@ -14,19 +14,28 @@ package com.iptvtv.data
  * Playlists from Ace M3U carry the first form. The player plays the second.
  */
 object AceStream {
-    private val ID_KEYS = setOf("id", "infohash", "content_id")
-
     /** True for the engine's own HTTP API, whatever host it is reached on. */
     fun isEngineUrl(url: String) = url.contains("/ace/", ignoreCase = true) && url.contains('?')
 
-    /** The acestream://<id> link behind an engine URL, or null for any other stream. */
+    /**
+     * The shareable link behind an engine URL, or null for any other stream.
+     *
+     * Two kinds of identity reach the engine, and they are not interchangeable: a content
+     * id (`id=` / `content_id=`) is an Ace Stream catalogue entry and is written
+     * `acestream://<id>`; an `infohash=` is a torrent, and Ace Stream expects that as a
+     * magnet link — given `acestream://<infohash>` it goes looking for a transport file
+     * that doesn't exist and says so.
+     */
     fun link(url: String): String? {
         if (!isEngineUrl(url)) return null
-        val id = url.substringAfter('?').split('&').asSequence()
+        val params = url.substringAfter('?').split('&').asSequence()
             .map { it.substringBefore('=') to it.substringAfter('=', "") }
-            .firstOrNull { (k, v) -> k in ID_KEYS && v.isNotBlank() }
-            ?.second ?: return null
-        return "acestream://$id"
+            .filter { (_, v) -> v.isNotBlank() }
+            .toMap()
+        params["id"]?.let { return "acestream://$it" }
+        params["content_id"]?.let { return "acestream://$it" }
+        params["infohash"]?.let { return "magnet:?xt=urn:btih:$it" }
+        return null
     }
 
     /** The HLS form of a getstream URL; anything else comes back unchanged. */
