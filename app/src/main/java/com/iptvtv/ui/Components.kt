@@ -173,7 +173,10 @@ fun TvActionButton(
                 Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(Space.sm))
             }
-            Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+            // A pill is one line. Squeezed, a label would otherwise break a letter at a
+            // time down a tall capsule ("Che / ck / agai / n") — the parent has to make
+            // room instead, which is why pill groups are FlowRows.
+            Text(label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -214,7 +217,7 @@ fun TvChip(label: String, selected: Boolean, icon: ImageVector? = null, onClick:
                 Icon(icon, null, tint = if (selected) fg else cs.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(Space.sm))
             }
-            Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+            Text(label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1, softWrap = false)
         }
     }
 }

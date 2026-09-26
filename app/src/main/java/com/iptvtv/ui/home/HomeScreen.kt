@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.iptvtv.ui.home
 
 import androidx.compose.foundation.background
@@ -7,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -328,18 +331,21 @@ private fun OptionsSection(
             Column {
                 Text("Pre-buffer", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
                 Text(
-                    "How much of a channel to load before it plays. More rides out a patchy connection, " +
-                        "but channels start slower and play further behind live. Some live channels keep " +
-                        "less than a minute, so the longest settings may not fill. 2.5 s is the usual.",
+                    "How much to load before a channel plays. More rides out a patchy connection but " +
+                        "starts slower and runs further behind live; some channels hold under a minute, so " +
+                        "the longest may not fill. 2.5 s is the usual.",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                 )
             }
         }
         Spacer(Modifier.height(Space.md))
         // Indented to the text column, so the choices read as answers to the label above.
-        Row(
+        // Wraps rather than squeezes: five chips fit a TV or a landscape phone, not a
+        // portrait one, where a fixed Row crushed the last chip into a vertical "3 / 0 / s".
+        FlowRow(
             Modifier.padding(start = 24.dp + Space.md),
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
             PREBUFFER_CHOICES.forEach { ms ->
                 TvChip(prebufferLabel(ms), settings.prebufferMs == ms) { onChoosePrebuffer(ms) }
@@ -400,17 +406,18 @@ private fun AceEngineCard(
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
                 Text(
-                    "Ace Stream channels play through the engine in the Ace Stream app. The phone stops that " +
-                        "app in the background to save battery, and the stream stops with it. Allow it to run " +
-                        "unrestricted — Battery → Unrestricted on its settings page — and it stays up.",
+                    "Ace Stream channels play through the Ace Stream app's engine. The phone stops it in " +
+                        "the background to save battery, taking the stream with it — set its battery use to " +
+                        "Unrestricted and it stays up.",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                 )
             }
         }
         Spacer(Modifier.height(Space.md))
-        Row(
+        FlowRow(
             Modifier.padding(start = 24.dp + Space.md),
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
             TvActionButton("Allow in background", onSettings, icon = Icons.Rounded.BatterySaver)
             if (engine == AceEngineState.STOPPED) {

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.iptvtv.ui.player
 
 import android.app.Activity
@@ -21,8 +23,10 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -478,7 +482,10 @@ fun PlayerScreen(
                         // loaded, so it can be played there or here (Try again) as preferred.
                         // The settings page is where the phone is told to stop killing it.
                         val hasLink = AceStream.link(channel.url) != null
-                        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(Space.sm, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(Space.sm),
+                        ) {
                             TvActionButton(
                                 if (hasLink) "Open in Ace Stream" else "Open Ace Stream",
                                 { if (hasLink) openInAceStream(ctx, channel) else aceEngine.open()?.let(ctx::startActivity) },
@@ -516,7 +523,7 @@ fun PlayerScreen(
             // Laid out like the channel list's app bar — back at the start, what you're
             // watching, actions at the end — and at the top, where Android puts screen
             // navigation and where it stays clear of the subtitles.
-            Row(
+            BoxWithConstraints(
                 Modifier
                     .fillMaxWidth()
                     // Held dark through the text before it fades: on a bright, full-frame
@@ -532,105 +539,131 @@ fun PlayerScreen(
                     .padding(start = Space.xl, end = Space.xl, top = Space.lg, bottom = Space.xxl)
                     .onFocusChanged { controlsFocused = it.hasFocus }
                     .focusGroup(),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                TvIconButton(
-                    Icons.AutoMirrored.Rounded.ArrowBack, exitLabel, onExit,
-                    modifier = Modifier.focusRequester(backFocus),
-                    tint = Color.White,
-                )
-                Spacer(Modifier.width(Space.md))
-
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        channel.clean, style = MaterialTheme.typography.headlineSmall, color = Color.White,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(Space.xs))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Secondary text over picture is dimmed white, not the UI's
-                        // blue-grey: that grey is tuned for the app's own ink surfaces
-                        // and turns muddy over footage.
-                        Text(
-                            channel.groups.joinToString(" · "),
-                            style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = .8f),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        channel.quality?.let {
-                            Spacer(Modifier.width(Space.md))
-                            Text(it, style = MaterialTheme.typography.labelMedium, color = cs.primary)
-                        }
-                        if (channel.geoBlocked) {
-                            Spacer(Modifier.width(Space.md))
-                            Icon(Icons.Rounded.Public, null, tint = cs.tertiary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(Space.xs))
-                            Text("Geo-blocked", style = MaterialTheme.typography.labelMedium, color = cs.tertiary)
-                        }
-                        if (playing.isFavourite) {
-                            Spacer(Modifier.width(Space.md))
-                            Icon(Icons.Rounded.Star, null, tint = cs.primary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(Space.xs))
-                            Text("Favourite", style = MaterialTheme.typography.labelMedium, color = cs.primary)
-                        }
-                        if (settings.subtitlesOn && !hasSubtitles) {
-                            Spacer(Modifier.width(Space.md))
-                            Text(
-                                "No subtitles on this channel",
-                                style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = .8f),
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.width(Space.lg))
-
-                TvIconButton(
-                    Icons.Rounded.SkipPrevious, "Previous channel", { onStep(-1) },
-                    modifier = Modifier.focusRequester(controlsFocus),
-                    tint = Color.White,
-                )
-                TvIconButton(Icons.Rounded.SkipNext, "Next channel", { onStep(1) }, tint = Color.White)
-                // A fresh load of the same stream, for a picture that has frozen or fallen
-                // behind without the player noticing — the same thing the error screen's
-                // Try again does, reachable while the stream is nominally still playing.
-                TvIconButton(Icons.Rounded.Refresh, "Reload stream", { reloads++; pokes++ }, tint = Color.White)
-                if (canRotate) {
+                // Back, what you're watching, and six 48dp controls need ~620dp on one line.
+                // A portrait phone has ~410, which left the channel name no width at all —
+                // so a narrow bar puts the controls on a line of their own, under the title.
+                val narrow = maxWidth < 600.dp
+                val backButton = @Composable {
                     TvIconButton(
-                        Icons.Rounded.ScreenRotation,
-                        if (portrait) "Rotate to landscape" else "Rotate to portrait",
-                        { portrait = !portrait; pokes++ },
+                        Icons.AutoMirrored.Rounded.ArrowBack, exitLabel, onExit,
+                        modifier = Modifier.focusRequester(backFocus),
                         tint = Color.White,
                     )
                 }
-                TvIconButton(
-                    icon = if (settings.subtitlesOn) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionOff,
-                    contentDescription = when {
-                        settings.subtitlesOn && !hasSubtitles -> "Subtitles on, but this channel has none"
-                        settings.subtitlesOn -> "Turn subtitles off"
-                        else -> "Turn subtitles on"
-                    },
-                    onClick = { onToggleSubtitles(); pokes++ },
-                    tint = when {
-                        settings.subtitlesOn && !hasSubtitles -> cs.onSurfaceVariant
-                        settings.subtitlesOn -> cs.primary
-                        else -> Color.White
-                    },
-                )
-                // Casting only where it can actually happen. An Android TV box
-                // without Play services gets no button rather than one that fails.
-                if (cast.available) {
-                    if (cast.connecting) {
-                        Text("Connecting…", style = MaterialTheme.typography.labelMedium, color = cs.primary)
-                        Spacer(Modifier.width(Space.sm))
+                val identity = @Composable { m: Modifier ->
+                    Column(m) {
+                        Text(
+                            channel.clean, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(Space.xs))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Secondary text over picture is dimmed white, not the UI's
+                            // blue-grey: that grey is tuned for the app's own ink surfaces
+                            // and turns muddy over footage.
+                            Text(
+                                channel.groups.joinToString(" · "),
+                                style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = .8f),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            channel.quality?.let {
+                                Spacer(Modifier.width(Space.md))
+                                Text(it, style = MaterialTheme.typography.labelMedium, color = cs.primary)
+                            }
+                            if (channel.geoBlocked) {
+                                Spacer(Modifier.width(Space.md))
+                                Icon(Icons.Rounded.Public, null, tint = cs.tertiary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(Space.xs))
+                                Text("Geo-blocked", style = MaterialTheme.typography.labelMedium, color = cs.tertiary)
+                            }
+                            if (playing.isFavourite) {
+                                Spacer(Modifier.width(Space.md))
+                                Icon(Icons.Rounded.Star, null, tint = cs.primary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(Space.xs))
+                                Text("Favourite", style = MaterialTheme.typography.labelMedium, color = cs.primary)
+                            }
+                            if (settings.subtitlesOn && !hasSubtitles) {
+                                Spacer(Modifier.width(Space.md))
+                                Text(
+                                    "No subtitles on this channel",
+                                    style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = .8f),
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+
+                }
+                val controls = @Composable {
+                    TvIconButton(
+                        Icons.Rounded.SkipPrevious, "Previous channel", { onStep(-1) },
+                        modifier = Modifier.focusRequester(controlsFocus),
+                        tint = Color.White,
+                    )
+                    TvIconButton(Icons.Rounded.SkipNext, "Next channel", { onStep(1) }, tint = Color.White)
+                    // A fresh load of the same stream, for a picture that has frozen or fallen
+                    // behind without the player noticing — the same thing the error screen's
+                    // Try again does, reachable while the stream is nominally still playing.
+                    TvIconButton(Icons.Rounded.Refresh, "Reload stream", { reloads++; pokes++ }, tint = Color.White)
+                    if (canRotate) {
+                        TvIconButton(
+                            Icons.Rounded.ScreenRotation,
+                            if (portrait) "Rotate to landscape" else "Rotate to portrait",
+                            { portrait = !portrait; pokes++ },
+                            tint = Color.White,
+                        )
                     }
                     TvIconButton(
-                        icon = if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
-                        contentDescription = if (cast.casting) "Stop casting to ${cast.deviceName}" else "Cast to a device",
-                        onClick = { if (cast.casting) cast.disconnect() else showPicker = true },
-                        tint = if (cast.casting) cs.primary else Color.White,
+                        icon = if (settings.subtitlesOn) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionOff,
+                        contentDescription = when {
+                            settings.subtitlesOn && !hasSubtitles -> "Subtitles on, but this channel has none"
+                            settings.subtitlesOn -> "Turn subtitles off"
+                            else -> "Turn subtitles on"
+                        },
+                        onClick = { onToggleSubtitles(); pokes++ },
+                        tint = when {
+                            settings.subtitlesOn && !hasSubtitles -> cs.onSurfaceVariant
+                            settings.subtitlesOn -> cs.primary
+                            else -> Color.White
+                        },
                     )
+                    // Casting only where it can actually happen. An Android TV box
+                    // without Play services gets no button rather than one that fails.
+                    if (cast.available) {
+                        if (cast.connecting) {
+                            Text("Connecting…", style = MaterialTheme.typography.labelMedium, color = cs.primary)
+                            Spacer(Modifier.width(Space.sm))
+                        }
+                        TvIconButton(
+                            icon = if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
+                            contentDescription = if (cast.casting) "Stop casting to ${cast.deviceName}" else "Cast to a device",
+                            onClick = { if (cast.casting) cast.disconnect() else showPicker = true },
+                            tint = if (cast.casting) cs.primary else Color.White,
+                        )
+                    }
+                }
+                if (narrow) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            backButton()
+                            Spacer(Modifier.width(Space.md))
+                            identity(Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(Space.sm))
+                        Row(Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                            controls()
+                        }
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        backButton()
+                        Spacer(Modifier.width(Space.md))
+                        identity(Modifier.weight(1f))
+                        Spacer(Modifier.width(Space.lg))
+                        controls()
+                    }
                 }
             }
         }
