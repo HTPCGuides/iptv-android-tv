@@ -100,6 +100,7 @@ import com.iptvtv.model.DEFAULT_PREBUFFER_MS
 import com.iptvtv.ui.LocalReducedMotion
 import com.iptvtv.ui.Space
 import com.iptvtv.ui.SystemBars
+import com.iptvtv.ui.isTelevision
 import com.iptvtv.ui.TvActionButton
 import com.iptvtv.ui.TvIconButton
 import com.iptvtv.ui.containerViewModel
@@ -198,6 +199,7 @@ fun PlayerScreen(
     val cast = rememberCastController()
     val cs = MaterialTheme.colorScheme
     val reducedMotion = LocalReducedMotion.current
+    val tv = isTelevision()
 
     // Live streams drop out mid-play. After a network blip Media3 resumes the load with a
     // byte-range request, a live server has nothing at that offset to give back (HTTP 416),
@@ -554,7 +556,11 @@ fun PlayerScreen(
                         ),
                     )
                     .safeDrawingPadding()   // clear of the camera cutout in landscape
-                    .padding(start = Space.xl, end = Space.xl, top = Space.lg, bottom = Space.xxl)
+                    // A TV may overscan: keep the back button and title inside its safe area.
+                    .padding(
+                        start = if (tv) 48.dp else Space.xl, end = if (tv) 48.dp else Space.xl,
+                        top = if (tv) 27.dp else Space.lg, bottom = Space.xxl,
+                    )
                     .onFocusChanged { controlsFocused = it.hasFocus }
                     .focusGroup(),
             ) {
