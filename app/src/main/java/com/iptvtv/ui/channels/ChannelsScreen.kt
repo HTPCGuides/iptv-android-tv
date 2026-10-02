@@ -2,6 +2,9 @@
 
 package com.iptvtv.ui.channels
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.platform.LocalConfiguration
 import com.iptvtv.ui.screenPadding
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.lazy.grid.items
@@ -139,37 +142,46 @@ fun ChannelsScreen(
             .safeDrawingPadding()
             .screenPadding(),
     ) {
-        Header(uiState, onBack, onRefresh, onRename)
-
-        Spacer(Modifier.height(Space.lg))
-        OutlinedTextField(
-            value = success?.query ?: "",
-            onValueChange = onQueryChange,
-            label = { Text("Search channels") },
-            leadingIcon = { Icon(Icons.Rounded.Search, null) },
-            trailingIcon = {
-                if (!success?.query.isNullOrEmpty()) {
-                    TvIconButton(Icons.Rounded.Close, "Clear search", { onQueryChange("") })
-                }
-            },
-            singleLine = true,
-            enabled = success != null,
-            shape = MaterialTheme.shapes.medium,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-            // A text field swallows the D-pad, which strands a remote inside the box.
-            // Take the vertical keys back and hand focus to the neighbouring row.
-            modifier = Modifier
-                .fillMaxWidth()
-                .onPreviewKeyEvent { ev ->
-                    if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    when (ev.key) {
-                        Key.DirectionDown -> { focusManager.moveFocus(FocusDirection.Down); true }
-                        Key.DirectionUp -> { focusManager.moveFocus(FocusDirection.Up); true }
-                        else -> false
+        // On a phone held sideways the window is ~384dp tall, and title, search and
+        // chips stacked took 60% of it — two rows of channels left. Below 480dp the
+        // search field joins the title row. (A TV is 540dp; it keeps the stack.)
+        val compact = LocalConfiguration.current.screenHeightDp < 480
+        val searchField = @Composable { m: Modifier ->
+            OutlinedTextField(
+                value = success?.query ?: "",
+                onValueChange = onQueryChange,
+                label = { Text("Search channels") },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                trailingIcon = {
+                    if (!success?.query.isNullOrEmpty()) {
+                        TvIconButton(Icons.Rounded.Close, "Clear search", { onQueryChange("") })
                     }
                 },
-        )
+                singleLine = true,
+                enabled = success != null,
+                shape = MaterialTheme.shapes.medium,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                // A text field swallows the D-pad, which strands a remote inside the box.
+                // Take the vertical keys back and hand focus to the neighbouring row.
+                modifier = m
+                    .onPreviewKeyEvent { ev ->
+                        if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (ev.key) {
+                            Key.DirectionDown -> { focusManager.moveFocus(FocusDirection.Down); true }
+                            Key.DirectionUp -> { focusManager.moveFocus(FocusDirection.Up); true }
+                            else -> false
+                        }
+                    },
+            )
+        }
+        if (compact) {
+            Header(uiState, onBack, onRefresh, onRename) { searchField(Modifier.weight(1f)) }
+        } else {
+            Header(uiState, onBack, onRefresh, onRename)
+            Spacer(Modifier.height(Space.lg))
+            searchField(Modifier.fillMaxWidth())
+        }
 
         if (success != null && success.groups.isNotEmpty()) {
             Spacer(Modifier.height(Space.md))
@@ -239,7 +251,14 @@ fun ChannelsScreen(
  * from — our stored channels are the playlist — so it gets no Reload.
  */
 @Composable
-private fun Header(uiState: ChannelsUiState, onBack: () -> Unit, onRefresh: () -> Unit, onRename: (String) -> Unit) {
+private fun Header(
+    uiState: ChannelsUiState,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onRename: (String) -> Unit,
+    /** Shares the row with the title when the window is short; it takes the spare width. */
+    middle: (@Composable RowScope.() -> Unit)? = null,
+) {
     val cs = MaterialTheme.colorScheme
     val source: Source? = when (uiState) {
         is ChannelsUiState.Success -> uiState.source
@@ -254,7 +273,7 @@ private fun Header(uiState: ChannelsUiState, onBack: () -> Unit, onRefresh: () -
             Text(it.emoji, fontSize = 24.sp)
             Spacer(Modifier.width(Space.md))
         }
-        Column(Modifier.weight(1f)) {
+        Column(if (middle == null) Modifier.weight(1f) else Modifier.widthIn(max = 280.dp)) {
             // Two lines before it gives up: at 1.3x text on a phone "United Kingdom"
             // was "United Kingd…", and the title is what says where you are.
             Text(
@@ -268,6 +287,10 @@ private fun Header(uiState: ChannelsUiState, onBack: () -> Unit, onRefresh: () -
                     style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
                 )
             }
+        }
+        if (middle != null) {
+            Spacer(Modifier.width(Space.lg))
+            middle()
         }
         Spacer(Modifier.width(Space.md))
         if (source != null && !source.builtIn) {
