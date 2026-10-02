@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +41,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.selection.selectable
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -56,7 +59,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
@@ -92,6 +94,8 @@ fun TvSurface(
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.lg, vertical = Space.md),
     contentAlignment: Alignment = Alignment.TopStart,
     onLongClick: (() -> Unit)? = null,
+    /** What a screen reader calls it: a button unless the caller says otherwise (a checkbox row, say). */
+    role: Role = Role.Button,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -114,7 +118,7 @@ fun TvSurface(
             .background(if (focused) cs.surfaceContainerHighest else cs.surfaceContainer)
             .border(if (focused) 2.dp else 1.dp, if (focused) cs.primary else cs.outlineVariant, shape)
             .onFocusChanged { focused = it.isFocused }
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, role = role)
             .padding(contentPadding),
     ) { content(focused) }
 }
@@ -206,7 +210,7 @@ fun TvChip(label: String, selected: Boolean, icon: ImageVector? = null, onClick:
                 shape = shape,
             )
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick, role = Role.RadioButton)
+            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)   // announces which is chosen
             .padding(horizontal = Space.lg, vertical = Space.sm),
         contentAlignment = Alignment.Center,
     ) {
@@ -259,11 +263,11 @@ fun ChannelLogo(logo: String?, size: Dp, group: String = "Other") {
 
 /** Small advisory marker — geo-blocked, part-time. */
 @Composable
-fun Badge(icon: ImageVector, label: String, tint: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+fun Badge(icon: ImageVector, label: String, tint: Color, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(Space.xs))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -320,12 +324,19 @@ fun openInAceStream(ctx: Context, channel: Channel) {
  * copy its address — so it just does it. An Ace Stream channel has two: copy the
  * acestream:// link, or open it in the Ace Stream app itself.
  */
+fun holdChannel(ctx: Context, channel: Channel, showActions: (Channel) -> Unit) {
+    if (AceStream.link(channel.url) == null) copyStreamUrl(ctx, channel) else showActions(channel)
+}
+
+/** The press-and-hold menu for an Ace Stream channel; see [holdChannel]. */
 @Composable
 fun ChannelActions(channel: Channel, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val ace = AceStream.link(channel.url)
     if (ace == null) {
-        copyStreamUrl(ctx, channel); onDismiss()
+        // An ordinary stream has nothing to choose between: copy and close. Done as an
+        // effect, once — not as a side effect of composition, which can run twice.
+        LaunchedEffect(channel) { copyStreamUrl(ctx, channel); onDismiss() }
         return
     }
     AlertDialog(

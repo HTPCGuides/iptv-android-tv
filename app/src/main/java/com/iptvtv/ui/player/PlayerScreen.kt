@@ -3,6 +3,9 @@
 package com.iptvtv.ui.player
 
 import android.app.Activity
+import com.iptvtv.ui.Badge
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -189,6 +192,9 @@ fun PlayerScreen(
     val controlsFocus = remember { FocusRequester() }
     val backFocus = remember { FocusRequester() }
     var controlsFocused by remember { mutableStateOf(false) }
+    var playerFocused by remember { mutableStateOf(false) }
+    // Where a remote lands when a stream fails: on Try again, not on a picture that can't play.
+    val retryFocus = remember { FocusRequester() }
     val cast = rememberCastController()
     val cs = MaterialTheme.colorScheme
     val reducedMotion = LocalReducedMotion.current
@@ -388,14 +394,22 @@ fun PlayerScreen(
                 if (ev.type == KeyEventType.KeyDown && showInfo) pokes++
                 false
             }
-            .focusRequester(focus).focusable()
+            .focusRequester(focus)
+            .onFocusChanged { playerFocused = it.isFocused }
+            .focusable()
             .onKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
+                // Keys bubble up here from whichever control has focus. The arrows only
+                // zap when the picture itself holds focus — from a button they move focus,
+                // so the remote can walk the bar's two rows and the error screen's buttons.
+                // The remote's own channel keys zap from anywhere.
                 when (ev.key) {
-                    Key.DirectionUp, Key.ChannelUp -> { onStep(-1); true }
-                    Key.DirectionDown, Key.ChannelDown -> { onStep(1); true }
+                    Key.ChannelUp -> { onStep(-1); true }
+                    Key.ChannelDown -> { onStep(1); true }
+                    Key.DirectionUp -> if (playerFocused) { onStep(-1); true } else false
+                    Key.DirectionDown -> if (playerFocused) { onStep(1); true } else false
                     // Centre retries a failed stream; otherwise it toggles the info bar.
-                    Key.DirectionCenter, Key.Enter -> {
+                    Key.DirectionCenter, Key.Enter -> if (!playerFocused) false else {
                         if (error != null) reloads++ else showInfo = !showInfo
                         true
                     }
@@ -430,7 +444,8 @@ fun PlayerScreen(
         )
 
         if (cast.casting) {
-            Box(Modifier.fillMaxSize(), Alignment.Center) {
+            // Scrim, as on the error screen: the paused last frame stays behind this text.
+            Box(Modifier.fillMaxSize().background(cs.scrim.copy(alpha = .78f)), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Filled.Cast, null, Modifier.size(48.dp), tint = cs.primary)
                     Spacer(Modifier.height(Space.md))
@@ -462,9 +477,12 @@ fun PlayerScreen(
                 Modifier.fillMaxSize().background(cs.scrim.copy(alpha = .78f)),
                 contentAlignment = Alignment.Center,
             ) {
+                // A remote lands on Try again as soon as a stream fails; the arrows then walk
+                // the error's buttons. Scrolls, for a landscape phone at large font sizes.
+                LaunchedEffect(Unit) { runCatching { retryFocus.requestFocus() } }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = Space.xxl),
+                    modifier = Modifier.verticalScroll(rememberScrollState()).safeDrawingPadding().padding(horizontal = Space.xxl, vertical = Space.lg),
                 ) {
                     Icon(Icons.Rounded.WarningAmber, null, tint = cs.tertiary, modifier = Modifier.size(44.dp))
                     Spacer(Modifier.height(Space.md))
@@ -495,7 +513,7 @@ fun PlayerScreen(
                         }
                         Spacer(Modifier.height(Space.sm))
                     }
-                    TvActionButton("Try again", { reloads++ }, icon = Icons.Rounded.Refresh)
+                    TvActionButton("Try again", { reloads++ }, modifier = Modifier.focusRequester(retryFocus), icon = Icons.Rounded.Refresh)
                     Spacer(Modifier.height(Space.md))
                     Text(
                         "Or skip to the previous or next channel.",
@@ -558,38 +576,31 @@ fun PlayerScreen(
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                         Spacer(Modifier.height(Space.xs))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Wraps rather than squeezing: on a portrait phone the group, quality and
+                        // the labels did not fit one line, and the group text went to nothing.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(Space.md),
+                            verticalArrangement = Arrangement.spacedBy(Space.xs),
+                        ) {
                             // Secondary text over picture is dimmed white, not the UI's
                             // blue-grey: that grey is tuned for the app's own ink surfaces
                             // and turns muddy over footage.
+                            val dim = Color.White.copy(alpha = .8f)
                             Text(
                                 channel.groups.joinToString(" · "),
-                                style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = .8f),
+                                style = MaterialTheme.typography.bodyMedium, color = dim,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
                             )
                             channel.quality?.let {
-                                Spacer(Modifier.width(Space.md))
-                                Text(it, style = MaterialTheme.typography.labelMedium, color = cs.primary)
+                                Text(it, style = MaterialTheme.typography.labelMedium, color = cs.primary, modifier = Modifier.align(Alignment.CenterVertically))
                             }
-                            if (channel.geoBlocked) {
-                                Spacer(Modifier.width(Space.md))
-                                Icon(Icons.Rounded.Public, null, tint = cs.tertiary, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(Space.xs))
-                                Text("Geo-blocked", style = MaterialTheme.typography.labelMedium, color = cs.tertiary)
-                            }
-                            if (playing.isFavourite) {
-                                Spacer(Modifier.width(Space.md))
-                                Icon(Icons.Rounded.Star, null, tint = cs.primary, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(Space.xs))
-                                Text("Favourite", style = MaterialTheme.typography.labelMedium, color = cs.primary)
-                            }
+                            if (channel.geoBlocked) Badge(Icons.Rounded.Public, "Geo-blocked", cs.tertiary, Modifier.align(Alignment.CenterVertically))
+                            if (playing.isFavourite) Badge(Icons.Rounded.Star, "Favourite", cs.primary, Modifier.align(Alignment.CenterVertically))
                             if (settings.subtitlesOn && !hasSubtitles) {
-                                Spacer(Modifier.width(Space.md))
                                 Text(
                                     "No subtitles on this channel",
-                                    style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = .8f),
-                                    maxLines = 1,
+                                    style = MaterialTheme.typography.labelMedium, color = dim,
+                                    maxLines = 1, modifier = Modifier.align(Alignment.CenterVertically),
                                 )
                             }
                         }
@@ -632,15 +643,17 @@ fun PlayerScreen(
                     // Casting only where it can actually happen. An Android TV box
                     // without Play services gets no button rather than one that fails.
                     if (cast.available) {
-                        if (cast.connecting) {
-                            Text("Connecting…", style = MaterialTheme.typography.labelMedium, color = cs.primary)
-                            Spacer(Modifier.width(Space.sm))
-                        }
+                        // Connecting is shown on the button itself, not as a label beside it: on a
+                        // portrait phone the label pushed the button — the way to cancel — off the row.
                         TvIconButton(
                             icon = if (cast.casting) Icons.Filled.CastConnected else Icons.Filled.Cast,
-                            contentDescription = if (cast.casting) "Stop casting to ${cast.deviceName}" else "Cast to a device",
-                            onClick = { if (cast.casting) cast.disconnect() else showPicker = true },
-                            tint = if (cast.casting) cs.primary else Color.White,
+                            contentDescription = when {
+                                cast.casting -> "Stop casting to ${cast.deviceName}"
+                                cast.connecting -> "Connecting to a device. Tap to cancel"
+                                else -> "Cast to a device"
+                            },
+                            onClick = { if (cast.casting || cast.connecting) cast.disconnect() else showPicker = true },
+                            tint = if (cast.casting || cast.connecting) cs.primary else Color.White,
                         )
                     }
                 }

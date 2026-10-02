@@ -86,15 +86,6 @@ private val TvShapes = Shapes(
     large = RoundedCornerShape(16.dp),
 )
 
-/*
- * Legacy palette handles. New code reads MaterialTheme.colorScheme instead — these
- * stay so older call sites keep resolving to the same values, not a second palette.
- */
-val Bg = Ink
-val Card = InkRaised
-val Accent = Sky
-val Muted = ParchmentDim
-
 /** 4dp rhythm — every gap in the app is one of these. */
 object Space {
     val xs = 4.dp

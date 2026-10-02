@@ -1,5 +1,8 @@
 package com.iptvtv.ui.player
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import com.iptvtv.ui.Space
 
 import androidx.compose.foundation.background
@@ -59,6 +62,10 @@ fun CastPicker(
     onDismiss: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
+    val firstRow = remember { FocusRequester() }
+    // A remote lands on the first device — or on Cancel while still searching — rather than
+    // on nothing, which cost an extra press before anything was focused.
+    LaunchedEffect(cast.routes.isEmpty()) { runCatching { firstRow.requestFocus() } }
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.large,
@@ -93,8 +100,9 @@ fun CastPicker(
                         Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(Space.xs),
                     ) {
-                        cast.routes.forEach { route ->
+                        cast.routes.forEachIndexed { i, route ->
                             PickerRow(
+                                modifier = if (i == 0) Modifier.focusRequester(firstRow) else Modifier,
                                 name = route.name,
                                 detail = route.description?.takeIf { it.isNotBlank() },
                                 onClick = { onPick(route) },
@@ -103,16 +111,13 @@ fun CastPicker(
                     }
                 }
 
-                if (cast.casting) {
-                    Spacer(Modifier.height(Space.md))
-                    PickerRow(
-                        name = "Stop casting",
-                        detail = null,
-                        tint = cs.error,
-                        icon = false,
-                        onClick = { cast.disconnect(); onDismiss() },
-                    )
-                }
+                // A way out that a remote can reach: the dialog otherwise only closes on Back
+                // or a tap outside, and while it is still searching there is nothing to focus.
+                // (Stopping a cast lives on the player's Cast button, not here.)
+                Spacer(Modifier.height(Space.md))
+                PickerRow(
+                    modifier = if (cast.routes.isEmpty()) Modifier.focusRequester(firstRow) else Modifier,
+                    name = "Cancel", detail = null, tint = cs.onSurfaceVariant, icon = false, onClick = onDismiss)
             }
         }
     }
@@ -126,12 +131,13 @@ private fun PickerRow(
     onClick: () -> Unit,
     tint: Color? = null,
     icon: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
     val shape = MaterialTheme.shapes.small
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 48.dp)
             .clip(shape)
