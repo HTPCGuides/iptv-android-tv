@@ -2,6 +2,18 @@
 
 package com.iptvtv.ui.home
 
+import com.iptvtv.ui.screenPadding
+import com.iptvtv.ui.ReadableWidth
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -143,6 +155,7 @@ private fun HomeContent(
     onCheckAceEngine: () -> Unit,
 ) {
     var showAdd by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<Source?>(null) }
     val cs = MaterialTheme.colorScheme
     Column(
         Modifier
@@ -150,7 +163,7 @@ private fun HomeContent(
             .background(cs.background)
             .safeDrawingPadding()          // Android 15 draws edge-to-edge; keep clear of the bars
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = Space.xl, vertical = Space.lg),
+            .screenPadding(),
     ) {
         Text("IPTV TV", style = MaterialTheme.typography.displaySmall, color = cs.onSurface)
         Spacer(Modifier.height(Space.xs))
@@ -171,7 +184,13 @@ private fun HomeContent(
                     SourceTile(s, onClick = { onOpenSource(s) })
                     if (!s.builtIn) {
                         Spacer(Modifier.height(Space.sm))
-                        TvActionButton("Remove", { onRemoveSource(s) }, icon = Icons.Rounded.Close)
+                        // Named for TalkBack — with two custom sources, two buttons both
+                        // called "Remove" — and confirmed, since it takes a whole source away.
+                        TvActionButton(
+                            "Remove", { removing = s },
+                            modifier = Modifier.semantics { contentDescription = "Remove ${s.name}" },
+                            icon = Icons.Rounded.Close,
+                        )
                     }
                 }
             }
@@ -206,16 +225,23 @@ private fun HomeContent(
         Spacer(Modifier.height(Space.xl))
         SectionHeader(Icons.Rounded.Tune, "Options")
         Spacer(Modifier.height(Space.md))
-        OptionsSection(state.settings, state.cacheBytes, onHideGeoBlocked, onChoosePrebuffer, onClearCache)
+        Column(Modifier.widthIn(max = ReadableWidth)) {
+            OptionsSection(state.settings, state.cacheBytes, onHideGeoBlocked, onChoosePrebuffer, onClearCache)
+        }
 
         if (state.aceEngine != AceEngineState.NOT_INSTALLED) {
             Spacer(Modifier.height(Space.xl))
             SectionHeader(Icons.Rounded.Memory, "Ace Stream engine")
             Spacer(Modifier.height(Space.md))
-            AceEngineCard(state.aceEngine, onOpenAceStream, onAceStreamSettings, onCheckAceEngine)
+            Box(Modifier.widthIn(max = ReadableWidth)) {
+                AceEngineCard(state.aceEngine, onOpenAceStream, onAceStreamSettings, onCheckAceEngine)
+            }
         }
         Spacer(Modifier.height(Space.xl))
 
+        removing?.let { s ->
+            RemoveSourceDialog(s, onConfirm = { onRemoveSource(s); removing = null }, onCancel = { removing = null })
+        }
         if (showAdd) {
             AddPlaylistDialog(
                 onAdd = { n, u -> onAddSource(n, u); showAdd = false },
@@ -265,10 +291,12 @@ private fun ChannelRow(list: List<Channel>, onPlay: (Channel, List<Channel>) -> 
             TvSurface(
                 onClick = { onPlay(c, list) },
                 onLongClick = { held = c },
-                modifier = Modifier.width(212.dp).height(76.dp),
+                // A floor, not a fixed height: a two-line name plus its quality line
+                // needs more than 76dp, and the quality line was being cut in half.
+                modifier = Modifier.width(212.dp).heightIn(min = 76.dp),
                 contentPadding = PaddingValues(Space.md),
             ) {
-                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     ChannelLogo(c.logo, 40.dp, c.groups.first())
                     Spacer(Modifier.width(Space.md))
                     Column {
@@ -300,7 +328,14 @@ private fun OptionsSection(
     onClearCache: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
-    TvSurface(onClick = { onHideGeoBlocked(!settings.hideGeoBlocked) }, peakScale = 1.02f) {
+    TvSurface(
+        onClick = { onHideGeoBlocked(!settings.hideGeoBlocked) },
+        // Full width like the cards under it — it ended a third of the way across a
+        // tablet — and a checkbox to a screen reader, which now hears on or off.
+        modifier = Modifier.fillMaxWidth().semantics { toggleableState = ToggleableState(settings.hideGeoBlocked) },
+        role = Role.Checkbox,
+        peakScale = 1.02f,
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = settings.hideGeoBlocked, onCheckedChange = null)
             Spacer(Modifier.width(Space.md))
@@ -343,7 +378,7 @@ private fun OptionsSection(
         // Wraps rather than squeezes: five chips fit a TV or a landscape phone, not a
         // portrait one, where a fixed Row crushed the last chip into a vertical "3 / 0 / s".
         FlowRow(
-            Modifier.padding(start = 24.dp + Space.md),
+            Modifier.padding(start = 24.dp + Space.md).selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
             verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
@@ -433,6 +468,27 @@ private fun prebufferLabel(ms: Int) =
     if (ms % 1000 == 0) "${ms / 1000} s" else "%.1f s".format(ms / 1000f)
 
 @Composable
+private fun RemoveSourceDialog(source: Source, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Remove ${source.name}?") },
+        text = {
+            Text(
+                if (source.isFile) {
+                    "It was imported from a file, so its channels only come back by importing that file again."
+                } else {
+                    "It comes off your sources. You can add the playlist URL again later."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        confirmButton = { Button(onClick = onConfirm) { Text("Remove") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+@Composable
 private fun AddPlaylistDialog(onAdd: (String, String) -> Unit, onCancel: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -453,12 +509,16 @@ private fun AddPlaylistDialog(onAdd: (String, String) -> Unit, onCancel: () -> U
                 )
                 Spacer(Modifier.height(Space.sm))
                 OutlinedTextField(
-                    url, { url = it }, label = { Text("https://…/playlist.m3u") }, singleLine = true,
+                    url, { url = it },
+                    label = { Text("Playlist URL") },
+                    placeholder = { Text("https://…/playlist.m3u") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
-        confirmButton = { Button(onClick = { if (url.isNotBlank()) onAdd(name, url) }) { Text("Add") } },
+        confirmButton = { Button(onClick = { onAdd(name, url) }, enabled = url.isNotBlank()) { Text("Add") } },
         dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
     )
 }

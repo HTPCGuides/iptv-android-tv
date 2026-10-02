@@ -1,5 +1,13 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.iptvtv.ui.channels
 
+import com.iptvtv.ui.screenPadding
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -14,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
@@ -130,7 +137,7 @@ fun ChannelsScreen(
             .fillMaxSize()
             .background(cs.background)
             .safeDrawingPadding()
-            .padding(horizontal = Space.xl, vertical = Space.lg),
+            .screenPadding(),
     ) {
         Header(uiState, onBack, onRefresh, onRename)
 
@@ -167,6 +174,7 @@ fun ChannelsScreen(
         if (success != null && success.groups.isNotEmpty()) {
             Spacer(Modifier.height(Space.md))
             LazyRow(
+                Modifier.selectableGroup(),   // one set of choices to a screen reader, not twelve buttons
                 horizontalArrangement = Arrangement.spacedBy(Space.sm),
                 contentPadding = PaddingValues(horizontal = Space.xs, vertical = Space.xs),
             ) {
@@ -247,10 +255,12 @@ private fun Header(uiState: ChannelsUiState, onBack: () -> Unit, onRefresh: () -
             Spacer(Modifier.width(Space.md))
         }
         Column(Modifier.weight(1f)) {
+            // Two lines before it gives up: at 1.3x text on a phone "United Kingdom"
+            // was "United Kingd…", and the title is what says where you are.
             Text(
                 source?.name ?: "Channels",
                 style = MaterialTheme.typography.headlineSmall, color = cs.onSurface,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
             if (uiState is ChannelsUiState.Success) {
                 Text(
@@ -286,8 +296,13 @@ private fun ChannelList(
     val cs = MaterialTheme.colorScheme
     var held by remember { mutableStateOf<Channel?>(null) }
     held?.let { ChannelActions(it) { held = null } }
-    LazyColumn(
+    // One column on a phone; on a tablet, a TV or a landscape phone, as many as fit.
+    // A single full-width list put every name at the far left of a tablet and its star
+    // more than a thousand pixels away at the far right.
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 340.dp),
         modifier = Modifier.focusRequester(listFocus).focusGroup(),
+        horizontalArrangement = Arrangement.spacedBy(Space.lg),
         verticalArrangement = Arrangement.spacedBy(Space.sm),
         contentPadding = PaddingValues(vertical = Space.xs),
     ) {
@@ -311,25 +326,27 @@ private fun ChannelList(
                                 c.clean, style = MaterialTheme.typography.titleSmall, color = cs.onSurface,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
-                            Spacer(Modifier.height(2.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                val meta = buildString {
-                                    append(c.groups.joinToString(" · "))
-                                    c.quality?.let { append("  ·  $it") }
-                                }
+                            Spacer(Modifier.height(Space.xs))
+                            // Wraps, so a badge drops to its own line instead of taking the
+                            // room the groups and quality need: in portrait "ITV2 HD" read
+                            // "Entertainment…" with its 1080p gone, beside "Geo-blocked".
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(Space.md),
+                                verticalArrangement = Arrangement.spacedBy(Space.xs),
+                            ) {
+                                // Groups and quality are separate pieces, so at large text the
+                                // quality wraps onto the next line instead of being the part an
+                                // ellipsis eats ("Outdoor · Sports …").
                                 Text(
-                                    meta, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                                    c.groups.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false),
                                 )
-                                if (c.geoBlocked) {
-                                    Spacer(Modifier.width(Space.md))
-                                    Badge(Icons.Rounded.Public, "Geo-blocked", cs.tertiary)
+                                c.quality?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1)
                                 }
-                                if (c.partTime) {
-                                    Spacer(Modifier.width(Space.md))
-                                    Badge(Icons.Rounded.Schedule, "Part-time", cs.onSurfaceVariant)
-                                }
+                                if (c.geoBlocked) Badge(Icons.Rounded.Public, "Geo-blocked", cs.tertiary)
+                                if (c.partTime) Badge(Icons.Rounded.Schedule, "Part-time", cs.onSurfaceVariant)
                             }
                         }
                     }
