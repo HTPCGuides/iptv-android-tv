@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.roborazzi)   // screenshot tests: every screen at phone, tablet and TV sizes
 }
 
 android {
@@ -49,6 +50,9 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
     testOptions.unitTests.isIncludeAndroidResources = true   // Robolectric-backed Room tests
+    // A full-length tablet render is 2560x5200px; Roborazzi's conversion of it ran the
+    // default test heap out of memory.
+    testOptions.unitTests.all { it.maxHeapSize = "2g" }
 }
 
 ksp {
@@ -92,4 +96,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)   // the host activity Roborazzi renders into
 }
