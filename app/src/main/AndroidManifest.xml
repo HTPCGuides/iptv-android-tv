@@ -37,6 +37,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
             android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|navigation">
             <!-- ^ fullUser: follow the device, whichever way it is held, within the user's own

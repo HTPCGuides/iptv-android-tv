@@ -9,6 +9,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,8 @@ import com.iptvtv.ui.containerViewModel
 import com.iptvtv.ui.navigation.ChannelsRoute
 import com.iptvtv.ui.navigation.HomeRoute
 import com.iptvtv.ui.navigation.IptvNavHost
+import com.iptvtv.ui.player.LocalPip
+import com.iptvtv.ui.player.PipController
 
 class MainActivity : ComponentActivity() {
     /**
@@ -28,17 +31,33 @@ class MainActivity : ComponentActivity() {
      * handed over while the app is already running arrives here through onNewIntent.
      */
     private val handoff = mutableStateOf<Intent?>(null)
+    private lateinit var pip: PipController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pip = PipController(this)
+        addOnPictureInPictureModeChangedListener { pip.inPip = it.isInPictureInPictureMode }
         // A recreated activity still holds the intent it was first started with; importing
         // that again would pull the user back to a list they had already left.
         if (savedInstanceState == null) handoff.value = intent
         setContent {
             IptvTheme {
-                Surface { App(handoff) }
+                CompositionLocalProvider(LocalPip provides pip) {
+                    Surface { App(handoff) }
+                }
             }
         }
+    }
+
+    /** Going home while a channel plays: enter PiP (Android 12+ does this itself). */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        pip.onUserLeaveHint()
+    }
+
+    override fun onDestroy() {
+        pip.release()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

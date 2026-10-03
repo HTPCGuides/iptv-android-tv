@@ -2,6 +2,14 @@
 
 package com.iptvtv.ui.player
 
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
+import androidx.compose.ui.graphics.toAndroidRect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.media3.common.VideoSize
 import android.app.Activity
 import com.iptvtv.ui.Badge
 import androidx.compose.foundation.verticalScroll
@@ -198,6 +206,13 @@ fun PlayerScreen(
     val retryFocus = remember { FocusRequester() }
     val cast = rememberCastController()
     val castTarget = remember(channel.url) { CastController.castTarget(channel.url) }
+    val pip = LocalPip.current
+    val inPip = pip?.inPip == true
+    // What PiP needs from the picture: its shape, where it sits, and whether it's playing.
+    var videoW by remember { mutableStateOf(0) }
+    var videoH by remember { mutableStateOf(0) }
+    var videoBounds by remember { mutableStateOf<android.graphics.Rect?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
     val reducedMotion = LocalReducedMotion.current
     val tv = isTelevision()
@@ -253,6 +268,11 @@ fun PlayerScreen(
             }
 
             addListener(object : Player.Listener {
+                override fun onVideoSizeChanged(size: VideoSize) {
+                    videoW = (size.width * size.pixelWidthHeightRatio).toInt()
+                    videoH = size.height
+                }
+                override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
                 override fun onPlaybackStateChanged(state: Int) {
                     buffering = state == Player.STATE_BUFFERING
                     if (state == Player.STATE_READY) error = null
@@ -385,6 +405,41 @@ fun PlayerScreen(
         onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER }
     }
 
+    // Picture-in-picture: only for a picture playing here — not while casting, not over an
+    // error. Kept current so going home (Android 12+) or the PiP button enters it at once.
+    val pipEligible = !cast.casting && error == null
+    LaunchedEffect(pip, pipEligible, isPlaying, videoW, videoH, videoBounds) {
+        pip?.update(pipEligible, isPlaying, videoW, videoH, videoBounds)
+    }
+    DisposableEffect(pip) { onDispose { pip?.update(false, false, 0, 0, null) } }   // no PiP off the player
+    LaunchedEffect(inPip) { if (inPip) showInfo = false }   // the window shows the picture only
+    LaunchedEffect(pip) {
+        pip?.actions?.collect { action ->
+            when (action) {
+                PipAction.PREVIOUS -> onStep(-1)
+                PipAction.NEXT -> onStep(1)
+                PipAction.PLAY_PAUSE -> if (player.isPlaying) player.pause() else player.play()
+            }
+        }
+    }
+
+    // No background audio. A PiP window keeps the activity started, so playback goes on
+    // there; going home without PiP, or closing the PiP window, stops the activity, and the
+    // stream pauses with it. It picks up again on return.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, player) {
+        var pausedByStop = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> if (player.isPlaying) { player.pause(); pausedByStop = true }
+                Lifecycle.Event.ON_START -> if (pausedByStop) { pausedByStop = false; if (!cast.casting) player.play() }
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
     Box(
         Modifier.fillMaxSize().background(Color.Black)
             // Tap to reveal the overlay. The D-pad centre already did this; on a
@@ -436,7 +491,7 @@ fun PlayerScreen(
             },
     ) {
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onGloballyPositioned { videoBounds = it.boundsInWindow().toAndroidRect() },
             factory = { c ->
                 PlayerView(c).apply {
                     useController = false
@@ -454,7 +509,7 @@ fun PlayerScreen(
             )
         }
 
-        if (buffering && error == null && !cast.casting) {
+        if (buffering && error == null && !cast.casting && !inPip) {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = cs.primary)
@@ -464,7 +519,7 @@ fun PlayerScreen(
             }
         }
 
-        error?.let {
+        error?.takeIf { !inPip }?.let {
             // Scrim: a failed stream can leave the last decoded frame on screen behind this.
             Box(
                 Modifier.fillMaxSize().background(cs.scrim.copy(alpha = .78f)),
@@ -526,7 +581,7 @@ fun PlayerScreen(
         }
 
         AnimatedVisibility(
-            visible = showInfo,
+            visible = showInfo && !inPip,
             enter = fadeIn(tween(if (reducedMotion) 0 else 180)),
             exit = fadeOut(tween(if (reducedMotion) 0 else 260)),
             modifier = Modifier.align(Alignment.TopStart),
@@ -611,6 +666,10 @@ fun PlayerScreen(
                         tint = Color.White,
                     )
                     TvIconButton(Icons.Rounded.SkipNext, "Next channel", { onStep(1) }, tint = Color.White)
+                    // Like MX Player's: the explicit way in, for when going home isn't wanted.
+                    if (pip?.supported == true && pipEligible) {
+                        TvIconButton(Icons.Rounded.PictureInPictureAlt, "Picture in picture", { pip.enter() }, tint = Color.White)
+                    }
                     // A fresh load of the same stream, for a picture that has frozen or fallen
                     // behind without the player noticing — the same thing the error screen's
                     // Try again does, reachable while the stream is nominally still playing.
