@@ -13,3 +13,6 @@ local.properties
 *.jks
 *.keystore
 !app/debug.keystore
+
+# Dev-server dashboard status (written by project-status); local, not part of the app
+.ctx7/
