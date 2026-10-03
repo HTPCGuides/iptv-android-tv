@@ -7,6 +7,25 @@ plugins {
     alias(libs.plugins.roborazzi)   // screenshot tests: every screen at phone, tablet and TV sizes
 }
 
+/*
+ * Versions come from the release tag. CI passes -PreleaseVersion=1.2.3 for tag v1.2.3;
+ * versionCode is derived from it (1.2.3 -> 10203), so every release installs over the
+ * last. A local build is 0.0.0-dev / 1, below any release.
+ */
+val releaseVersion: String? = providers.gradleProperty("releaseVersion").orNull
+val releaseVersionCode: Int = releaseVersion?.let { v ->
+    val parts = v.split('.').map { it.toIntOrNull() ?: error("releaseVersion must look like 1.2.3, got $v") }
+    require(parts.size == 3) { "releaseVersion must look like 1.2.3, got $v" }
+    parts[0] * 10_000 + parts[1] * 100 + parts[2]
+} ?: 1
+
+/*
+ * Release signing reads its key from the environment — the release workflow writes the
+ * keystore from repository secrets — so the key never lives in the repository. Without
+ * those variables a release build is left unsigned rather than signed with something else.
+ */
+val releaseKeystore: String? = System.getenv("RELEASE_KEYSTORE_PATH")
+
 android {
     namespace = "com.iptvtv"
     compileSdk = 35
@@ -15,8 +34,8 @@ android {
         applicationId = "com.iptvtv"
         minSdk = 23              // covers older Android TV boxes and Fire TV sticks
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersion ?: "0.0.0-dev"
     }
 
     // Pinned in-tree so every builder signs with the same key. The app used to take
@@ -30,9 +49,20 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
         // Debug-signed but R8-minified: ~3x smaller APK for slow-network installs (TV stick).
         create("slim") {
             initWith(getByName("debug"))

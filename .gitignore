@@ -6,3 +6,10 @@ local.properties
 *.apk
 .idea/
 .kotlin/
+
+# Release signing material — never committed (see README, "Releasing")
+.release/
+.release-tmp/
+*.jks
+*.keystore
+!app/debug.keystore

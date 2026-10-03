@@ -2,6 +2,7 @@ package com.iptvtv.ui
 
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.iptvtv.model.Channel
 import com.iptvtv.model.Settings
@@ -68,8 +69,12 @@ class ScreenshotTest {
         RuntimeEnvironment.setFontScale(1f)
     }
 
+    // CI renders on a GitHub runner whose font antialiasing differs from the machine that
+    // recorded these by a fraction of a percent; a real layout change differs by far more.
+    private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.01f))
+
     private fun capture(file: String, content: @Composable () -> Unit) =
-        captureRoboImage("src/test/screenshots/$file.png") {
+        captureRoboImage("src/test/screenshots/$file.png", roborazziOptions = options) {
             IptvTheme { Surface { content() } }
         }
 

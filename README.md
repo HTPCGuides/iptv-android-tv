@@ -1,4 +1,4 @@
-# IPTV TV
+# HTPCGuides IPTV
 
 An Android TV / Android IPTV player for M3U playlists, built with Jetpack Compose and
 Media3. It ships with four free-to-air playlists from [iptv-org](https://github.com/iptv-org/iptv)
@@ -6,6 +6,19 @@ and takes any M3U or M3U8 URL you point it at.
 
 Built for the remote first — every screen is navigable by D-pad — but it installs and
 works the same on a phone or tablet.
+
+## Install
+
+Get the APK from **[Releases](https://github.com/HTPCGuides/iptv-android-tv/releases/latest)**.
+
+- **Phone or tablet:** download `htpcguides-iptv-<version>.apk` on the device and open it.
+  Android asks once to allow installs from your browser.
+- **Android TV / Google TV:** install the *Downloader* app from the Play Store and enter
+  `https://github.com/HTPCGuides/iptv-android-tv/releases/latest/download/htpcguides-iptv.apk`
+  — that address always fetches the newest release.
+
+Releases install over each other and keep your favourites. A build installed before
+v0.2.0 was debug-signed with a different key; remove it once before the first release.
 
 ## What it does
 
@@ -58,10 +71,15 @@ single-module app:
 Requires JDK 17 and the Android SDK (compileSdk 35).
 
 ```bash
-./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleSlim           # debug-signed but R8-minified, ~5 MB — for slow installs
-./gradlew testDebugUnitTest      # parser + repository tests
+./gradlew assembleDebug              # app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleSlim               # debug-signed but R8-minified, ~5 MB — for slow installs
+./gradlew verifyRoborazziDebug       # all unit tests, plus every screen against its screenshot
+./gradlew recordRoborazziDebug       # after an intended UI change: re-record the screenshots
 ```
+
+The screenshot tests render Home, the channel list and the channel sheet as a phone in
+portrait and landscape, a tablet, a TV and a phone at 1.3x text, from fixtures in
+`ScreenshotTest.kt`; the PNGs live in `app/src/test/screenshots/` and are committed.
 
 Debug builds are signed with the key committed at `app/debug.keystore`, so every machine
 produces the same signature and updates install over each other.
@@ -75,6 +93,26 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 `minSdk` is 23, so it covers older Android TV boxes and Fire TV sticks. The app declares
 `LEANBACK_LAUNCHER`, so on Android TV it appears on the home row; leanback is not marked
 *required*, so it still installs on phones and tablets.
+
+## Releasing
+
+Every push to `master` runs **CI**: unit and screenshot tests and a debug build, whose APK
+is attached to the run for 14 days. A version tag publishes a release:
+
+```bash
+git tag v0.3.0 && git push origin v0.3.0
+```
+
+The **Release** workflow then tests, builds and signs the APK, checks the signature, and
+publishes `htpcguides-iptv-0.3.0.apk`, a fixed-name `htpcguides-iptv.apk` (for the
+`releases/latest/download/…` address above) and `SHA256SUMS.txt`, with install notes and
+the changes since the previous tag. The version and `versionCode` come from the tag
+(`v0.3.0` → 0.3.0 / 300); local builds are `0.0.0-dev`.
+
+Signing uses four repository secrets — `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`,
+`RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`. The keystore is never committed. **Keep a
+backup of it outside GitHub:** a lost key means a release can no longer update the
+installed app, and every device would have to uninstall it.
 
 ## Notes
 
