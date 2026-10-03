@@ -1,5 +1,6 @@
 package com.iptvtv.ui.player
 
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
@@ -90,9 +91,19 @@ fun CastPicker(
                         )
                     }
                     Spacer(Modifier.height(Space.sm))
+                    // Searching quietly forever reads as a loop. After a while, say what
+                    // usually stops a TV appearing — a VPN high on the list: with one up,
+                    // Android's Cast discovery treats the phone as having no network and
+                    // finds nothing, while apps with their own discovery (YouTube) still do.
+                    var searchedLong by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) { delay(10_000); searchedLong = true }
                     Text(
-                        "A Chromecast or Google TV has to be on the same Wi-Fi as this " +
-                            "device. If nothing appears, that's usually why.",
+                        if (!searchedLong) {
+                            "A Chromecast or Google TV has to be on the same Wi-Fi as this device."
+                        } else {
+                            "Nothing found yet. The TV has to be on the same Wi-Fi as this device — " +
+                                "and if a VPN is on, turn it off and try again: Cast can't find TVs through one."
+                        },
                         style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
                     )
                 } else {

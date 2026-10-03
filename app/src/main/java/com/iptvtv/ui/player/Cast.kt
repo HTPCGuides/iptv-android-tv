@@ -15,9 +15,13 @@ import com.google.android.gms.cast.CastMediaControlIntent
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.MediaMetadata
+import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.iptvtv.data.AceStream
+import java.net.URI
 
 /**
  * Casting, the way Plex and YouTube do it: find the receivers on the network,
@@ -60,8 +64,51 @@ class CastController(context: Context) {
 
     val casting: Boolean get() = deviceName != null
 
-    /** What to play once a session actually starts. Set before connecting. */
-    private var pending: Pair<String, String>? = null
+    /**
+     * What the TV says it is doing with the stream we sent. Without this the phone said
+     * "Playing on TV" while the TV sat on a spinner forever — the loop that was reported.
+     */
+    var receiver by mutableStateOf(Receiver.IDLE)
+        private set
+    /** Why the TV gave up, in its own words where it gives any. Set with [Receiver.FAILED]. */
+    var receiverError by mutableStateOf<String?>(null)
+        private set
+
+    private var client: RemoteMediaClient? = null
+    private val clientCallback = object : RemoteMediaClient.Callback() {
+        override fun onStatusUpdated() {
+            val status = client?.mediaStatus ?: return
+            when (status.playerState) {
+                MediaStatus.PLAYER_STATE_PLAYING, MediaStatus.PLAYER_STATE_PAUSED -> receiver = Receiver.PLAYING
+                MediaStatus.PLAYER_STATE_BUFFERING, MediaStatus.PLAYER_STATE_LOADING -> receiver = Receiver.LOADING
+                MediaStatus.PLAYER_STATE_IDLE -> when (status.idleReason) {
+                    MediaStatus.IDLE_REASON_ERROR -> fail("The TV couldn't open the stream.")
+                    // A live channel has no end; "finished" means the stream dropped out.
+                    MediaStatus.IDLE_REASON_FINISHED -> fail("The stream stopped on the TV.")
+                    else -> Unit   // a new load replacing the last one, or a stop we asked for
+                }
+            }
+        }
+    }
+
+    private fun fail(why: String) {
+        receiver = Receiver.FAILED
+        receiverError = why
+    }
+
+    private fun attach(session: CastSession) {
+        val c = session.remoteMediaClient ?: return
+        if (c === client) return
+        client?.unregisterCallback(clientCallback)
+        client = c.also { it.registerCallback(clientCallback) }
+    }
+
+    private fun detach() {
+        client?.unregisterCallback(clientCallback)
+        client = null
+        receiver = Receiver.IDLE
+        receiverError = null
+    }
 
     private val routerCallback = object : MediaRouter.Callback() {
         private fun refresh() {
@@ -74,15 +121,19 @@ class CastController(context: Context) {
     }
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
+        // Starting the stream is the player's job, not this callback's: the player reacts to
+        // [casting] turning true and sends the current channel. Doing it here as well loaded
+        // every cast twice, the second load cutting off the first.
         override fun onSessionStarted(session: CastSession, sessionId: String) {
             connecting = false
+            attach(session)
             deviceName = session.castDevice?.friendlyName
-            pending?.let { (url, title) -> play(url, title) }
         }
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+            attach(session)
             deviceName = session.castDevice?.friendlyName
         }
-        override fun onSessionEnded(session: CastSession, error: Int) { deviceName = null; connecting = false }
+        override fun onSessionEnded(session: CastSession, error: Int) { detach(); deviceName = null; connecting = false }
         override fun onSessionStartFailed(session: CastSession, error: Int) { deviceName = null; connecting = false }
         override fun onSessionSuspended(session: CastSession, reason: Int) {}
         override fun onSessionStarting(session: CastSession) { connecting = true }
@@ -98,6 +149,7 @@ class CastController(context: Context) {
         // it only runs while the picker or the player is on screen.
         router.addCallback(selector, routerCallback, MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN)
         cc.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
+        cc.sessionManager.currentCastSession?.let(::attach)
         deviceName = cc.sessionManager.currentCastSession?.castDevice?.friendlyName
         routes.clear()
         routes.addAll(router.routes.filter { it.matchesSelector(selector) && !it.isDefault })
@@ -107,41 +159,50 @@ class CastController(context: Context) {
         val cc = castContext ?: return
         router.removeCallback(routerCallback)
         cc.sessionManager.removeSessionManagerListener(sessionListener, CastSession::class.java)
+        client?.unregisterCallback(clientCallback)
+        client = null
     }
 
     /**
-     * Connect to [route] and queue [url] to start when the session is up.
-     *
-     * Selecting the route is what actually opens the session; the load has to
-     * wait for `onSessionStarted`, because a RemoteMediaClient does not exist
-     * until then. Doing it in the wrong order is the classic silent no-op.
+     * Connect to [route]. Selecting the route opens the session; the stream is sent once
+     * it is up (see onSessionStarted), because a RemoteMediaClient does not exist before.
      */
-    fun connect(route: MediaRouter.RouteInfo, url: String, title: String) {
-        pending = url to title
+    fun connect(route: MediaRouter.RouteInfo) {
         connecting = true
         router.selectRoute(route)
     }
 
-    /** Send a new stream to an already-connected receiver — used by channel up/down. */
-    fun play(url: String, title: String) {
-        val client = castContext?.sessionManager?.currentCastSession?.remoteMediaClient ?: return
+    /** Send [target] to the connected receiver — on connect, and on every channel change. */
+    fun play(target: CastTarget.Send, title: String) {
+        val session = castContext?.sessionManager?.currentCastSession ?: return
+        attach(session)
+        val client = client ?: return
         val meta = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, title)
         }
-        val info = MediaInfo.Builder(url)
+        val info = MediaInfo.Builder(target.url)
             .setStreamType(MediaInfo.STREAM_TYPE_LIVE)   // IPTV has no seekable timeline
-            .setContentType(contentTypeFor(url))
+            .setContentType(target.contentType)
             .setMetadata(meta)
             .build()
+        receiver = Receiver.LOADING
+        receiverError = null
         client.load(MediaLoadRequestData.Builder().setMediaInfo(info).setAutoplay(true).build())
-        pending = null
+            .setResultCallback { result ->
+                if (!result.status.isSuccess) fail("The TV refused the stream (error ${result.status.statusCode}).")
+            }
     }
 
     fun disconnect() {
         castContext?.sessionManager?.endCurrentSession(true)
         router.unselect(MediaRouter.UNSELECT_REASON_STOPPED)
+        detach()
         deviceName = null
+        connecting = false
     }
+
+    /** What the TV is doing with the stream, as far as it has told us. */
+    enum class Receiver { IDLE, LOADING, PLAYING, FAILED }
 
     companion object {
         /**
@@ -166,9 +227,34 @@ class CastController(context: Context) {
             }
         }
 
-        /** True for streams a stock Chromecast receiver will refuse. */
-        fun castable(url: String): Boolean = contentTypeFor(url) != "video/mp2t"
+        /**
+         * What a TV can do with a channel. Decided before anything is sent, because a TV
+         * handed a stream it can't use doesn't say so — it shows a spinner indefinitely.
+         */
+        fun castTarget(url: String): CastTarget {
+            // A stream served from this phone — an Ace Stream engine on 127.0.0.1 is the
+            // common one — is an address that, on the TV, means the TV itself.
+            val host = runCatching { URI(url).host }.getOrNull()?.lowercase()?.trim('[', ']')
+            if (host == null || host == "localhost" || host == "0.0.0.0" || host == "::1" || host.startsWith("127.")) {
+                return CastTarget.OnThisDevice
+            }
+            // An engine elsewhere on the network serves getstream as raw MPEG-TS; its HLS
+            // form is the same channel in a shape the receiver can play.
+            val send = AceStream.hlsUrl(url)
+            val type = contentTypeFor(send)
+            return if (type == "video/mp2t") CastTarget.UnsupportedFormat else CastTarget.Send(send, type)
+        }
     }
+}
+
+/** What casting a channel can come to. */
+sealed interface CastTarget {
+    /** Send [url] to the TV, declared as [contentType]. */
+    data class Send(val url: String, val contentType: String) : CastTarget
+    /** The stream is served from this phone, so the TV can't reach it. */
+    data object OnThisDevice : CastTarget
+    /** Raw MPEG-TS, which the default receiver can't play. */
+    data object UnsupportedFormat : CastTarget
 }
 
 /** A controller scoped to the composable that shows it, scanning only while visible. */

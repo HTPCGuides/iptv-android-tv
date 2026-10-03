@@ -197,6 +197,7 @@ fun PlayerScreen(
     // Where a remote lands when a stream fails: on Try again, not on a picture that can't play.
     val retryFocus = remember { FocusRequester() }
     val cast = rememberCastController()
+    val castTarget = remember(channel.url) { CastController.castTarget(channel.url) }
     val cs = MaterialTheme.colorScheme
     val reducedMotion = LocalReducedMotion.current
     val tv = isTelevision()
@@ -326,9 +327,9 @@ fun PlayerScreen(
             // cast implementation ships first.
             player.pause()
             buffering = false
-            if (CastController.castable(channel.url)) cast.play(channel.url, channel.clean)
-            else error = "This channel is raw MPEG-TS, which a Chromecast can't play. " +
-                "It works locally — disconnect to watch it here."
+            // Only what the TV can reach and play is sent; for anything else the cast
+            // overlay says why, rather than leaving the TV on a spinner.
+            (castTarget as? CastTarget.Send)?.let { cast.play(it, channel.clean) }
         } else {
             buffering = true
             player.setMediaItem(mediaItemFor(channel.url, settings.prebufferMs))
@@ -446,21 +447,11 @@ fun PlayerScreen(
         )
 
         if (cast.casting) {
-            // Scrim, as on the error screen: the paused last frame stays behind this text.
-            Box(Modifier.fillMaxSize().background(cs.scrim.copy(alpha = .78f)), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.Cast, null, Modifier.size(48.dp), tint = cs.primary)
-                    Spacer(Modifier.height(Space.md))
-                    Text(channel.clean, style = MaterialTheme.typography.titleLarge, color = Color.White)
-                    Spacer(Modifier.height(Space.sm))
-                    Text("Playing on ${cast.deviceName}", style = MaterialTheme.typography.bodyLarge, color = cs.primary)
-                    Spacer(Modifier.height(Space.xs))
-                    Text(
-                        "Previous and next change the channel on the TV",
-                        style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
-                    )
-                }
-            }
+            CastOverlay(
+                cast = cast, target = castTarget, channelName = channel.clean, channelUrl = channel.url,
+                onRetry = { (castTarget as? CastTarget.Send)?.let { cast.play(it, channel.clean) } },
+                onWatchHere = { cast.disconnect() },
+            )
         }
 
         if (buffering && error == null && !cast.casting) {
@@ -529,7 +520,7 @@ fun PlayerScreen(
         if (showPicker) {
             CastPicker(
                 cast = cast,
-                onPick = { route -> cast.connect(route, channel.url, channel.clean); showPicker = false },
+                onPick = { route -> cast.connect(route); showPicker = false },
                 onDismiss = { showPicker = false },
             )
         }
