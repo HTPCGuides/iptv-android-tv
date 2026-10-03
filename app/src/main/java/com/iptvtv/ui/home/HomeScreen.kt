@@ -169,7 +169,7 @@ private fun HomeContent(
             .verticalScroll(rememberScrollState())
             .screenPadding(),
     ) {
-        Text("IPTV TV", style = MaterialTheme.typography.displaySmall, color = cs.onSurface)
+        Text("HTPCGuides IPTV", style = MaterialTheme.typography.displaySmall, color = cs.onSurface)
         Spacer(Modifier.height(Space.xs))
         Text(
             "Free-to-air channels from iptv-org — plus your own playlists.",
