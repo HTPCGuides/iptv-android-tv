@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # A tampered gradle-wrapper.jar would run with this repository's permissions.
       - uses: gradle/actions/wrapper-validation@v4
