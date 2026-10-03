@@ -2,6 +2,7 @@
 
 package com.iptvtv.ui.channels
 
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.platform.LocalConfiguration
@@ -88,7 +89,7 @@ import com.iptvtv.ui.TvChip
 import com.iptvtv.ui.TvIconButton
 import com.iptvtv.ui.TvSurface
 import com.iptvtv.ui.containerViewModel
-import com.iptvtv.ui.ChannelActions
+import com.iptvtv.ui.ChannelSheet
 
 private fun channelCount(n: Int) = if (n == 1) "1 channel" else "$n channels"
 
@@ -318,10 +319,16 @@ private fun ChannelList(
 ) {
     val cs = MaterialTheme.colorScheme
     var held by remember { mutableStateOf<Channel?>(null) }
-    held?.let { ChannelActions(it) { held = null } }
+    held?.let { c ->
+        ChannelSheet(
+            c, isFavourite = c.favKey in state.favourites,
+            onPlay = { onPlay(c, state.channels) }, onToggleFavourite = { onToggleFavourite(c) }, onDismiss = { held = null },
+        )
+    }
     // One column on a phone; on a tablet, a TV or a landscape phone, as many as fit.
     // A single full-width list put every name at the far left of a tablet and its star
     // more than a thousand pixels away at the far right.
+    val narrow = LocalConfiguration.current.screenWidthDp < 600
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 340.dp),
         modifier = Modifier.focusRequester(listFocus).focusGroup(),
@@ -376,16 +383,24 @@ private fun ChannelList(
                 }
                 Spacer(Modifier.width(Space.sm))
                 val fav = c.favKey in state.favourites
-                // The row's own action is the one that carries the channel name; the
-                // star is a short label with its state, so a screen reader says
-                // "Favourite, on" rather than repeating the name for every row.
-                TvIconButton(
-                    icon = if (fav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                    contentDescription = "Favourite",
-                    onClick = { onToggleFavourite(c) },
-                    modifier = Modifier.semantics { stateDescription = if (fav) "On" else "Off" },
-                    tint = if (fav) cs.primary else cs.onSurfaceVariant,
-                )
+                val actions = @Composable {
+                    // The row's own action is the one that carries the channel name; the
+                    // star is a short label with its state, so a screen reader says
+                    // "Favourite, on" rather than repeating the name for every row.
+                    TvIconButton(
+                        icon = if (fav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                        contentDescription = "Favourite",
+                        onClick = { onToggleFavourite(c) },
+                        modifier = Modifier.semantics { stateDescription = if (fav) "On" else "Off" },
+                        tint = if (fav) cs.primary else cs.onSurfaceVariant,
+                    )
+                    // The visible way to the channel's other actions — press-and-hold does the
+                    // same, but nothing on screen says so.
+                    TvIconButton(Icons.Rounded.MoreVert, "More for ${c.clean}", { held = c }, tint = cs.onSurfaceVariant)
+                }
+                // Side by side they cost a narrow phone ~100dp of name ("Red Bull …" at 1.3x
+                // text); stacked, they fit the height a row has anyway.
+                if (narrow) Column { actions() } else Row { actions() }
             }
         }
     }

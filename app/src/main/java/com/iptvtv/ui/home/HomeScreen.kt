@@ -85,7 +85,7 @@ import com.iptvtv.ui.TvActionButton
 import com.iptvtv.ui.TvChip
 import com.iptvtv.ui.TvSurface
 import com.iptvtv.ui.containerViewModel
-import com.iptvtv.ui.ChannelActions
+import com.iptvtv.ui.ChannelSheet
 import com.iptvtv.ui.formatBytes
 
 @Composable
@@ -111,6 +111,7 @@ fun HomeRoute(
         onOpenAceStream = { aceEngine.open()?.let(ctx::startActivity) },
         onAceStreamSettings = { aceEngine.appSettings()?.let(ctx::startActivity) },
         onCheckAceEngine = viewModel::refresh,
+        onToggleFavourite = viewModel::toggleFavourite,
     )
 }
 
@@ -127,6 +128,7 @@ fun HomeScreen(
     onOpenAceStream: () -> Unit = {},
     onAceStreamSettings: () -> Unit = {},
     onCheckAceEngine: () -> Unit = {},
+    onToggleFavourite: (Channel) -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     when (uiState) {
@@ -135,7 +137,7 @@ fun HomeScreen(
         }
         is HomeUiState.Ready -> HomeContent(
             uiState, onOpenSource, onPlay, onAddSource, onRemoveSource, onHideGeoBlocked, onChoosePrebuffer, onClearCache,
-            onOpenAceStream, onAceStreamSettings, onCheckAceEngine,
+            onOpenAceStream, onAceStreamSettings, onCheckAceEngine, onToggleFavourite,
         )
     }
 }
@@ -153,8 +155,10 @@ private fun HomeContent(
     onOpenAceStream: () -> Unit,
     onAceStreamSettings: () -> Unit,
     onCheckAceEngine: () -> Unit,
+    onToggleFavourite: (Channel) -> Unit,
 ) {
     var showAdd by remember { mutableStateOf(false) }
+    val favourites = remember(state.favourites) { state.favourites.map { it.favKey }.toSet() }
     var removing by remember { mutableStateOf<Source?>(null) }
     val cs = MaterialTheme.colorScheme
     Column(
@@ -213,13 +217,13 @@ private fun HomeContent(
             Spacer(Modifier.height(Space.xl))
             SectionHeader(Icons.Rounded.Star, "Favourites")
             Spacer(Modifier.height(Space.md))
-            ChannelRow(state.favourites, onPlay)
+            ChannelRow(state.favourites, favourites, onPlay, onToggleFavourite)
         }
         if (state.recents.isNotEmpty()) {
             Spacer(Modifier.height(Space.xl))
             SectionHeader(Icons.Rounded.History, "Recently watched")
             Spacer(Modifier.height(Space.md))
-            ChannelRow(state.recents, onPlay)
+            ChannelRow(state.recents, favourites, onPlay, onToggleFavourite)
         }
 
         Spacer(Modifier.height(Space.xl))
@@ -280,9 +284,19 @@ private fun SourceTile(s: Source, onClick: () -> Unit) {
 
 /** Compact horizontal channel tiles for the Home favourites / recents rows. */
 @Composable
-private fun ChannelRow(list: List<Channel>, onPlay: (Channel, List<Channel>) -> Unit) {
+private fun ChannelRow(
+    list: List<Channel>,
+    favourites: Set<String>,
+    onPlay: (Channel, List<Channel>) -> Unit,
+    onToggleFavourite: (Channel) -> Unit,
+) {
     var held by remember { mutableStateOf<Channel?>(null) }
-    held?.let { ChannelActions(it) { held = null } }
+    held?.let { c ->
+        ChannelSheet(
+            c, isFavourite = c.favKey in favourites,
+            onPlay = { onPlay(c, list) }, onToggleFavourite = { onToggleFavourite(c) }, onDismiss = { held = null },
+        )
+    }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(Space.md),
         contentPadding = PaddingValues(horizontal = Space.xs, vertical = Space.sm),

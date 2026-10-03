@@ -132,6 +132,15 @@ class ScreenshotTest {
     @Test fun channels() = shoot("channels") { Channels(channelsState()) }
     @Test fun channelsRefreshing() = shoot("channels-refreshing") { Channels(channelsState(refreshing = true)) }
     @Test fun channelsNoMatch() = shoot("channels-no-match") { Channels(channelsState(query = "zzz", list = emptyList())) }
+    @Test fun channelSheet() = shoot("channel-sheet") {
+        ChannelSheetContent(channels[1], isFavourite = true, aceStreamInstalled = false, onPlay = {}, onToggleFavourite = {})
+    }
+    @Test fun channelSheetAce() = shoot("channel-sheet-ace") {
+        ChannelSheetContent(
+            Channel("Sky Sports Main Event (1080p)", "http://127.0.0.1:6878/ace/getstream?infohash=0123456789abcdef0123456789abcdef01234567", group = "Sports", sourceId = "ace"),
+            isFavourite = false, aceStreamInstalled = true, onPlay = {}, onToggleFavourite = {},
+        )
+    }
     @Test fun channelsError() = shoot("channels-error") {
         Channels(ChannelsUiState.Error(uk, "Couldn't reach iptv-org.github.io — check your connection, then try again."))
     }

@@ -284,23 +284,6 @@ fun CenteredState(content: @Composable ColumnScope.() -> Unit) {
 }
 
 /**
- * Press-and-hold on a channel puts its stream address on the clipboard, for pasting into
- * another player — the acestream:// ids in particular are unreadable to retype. Android 13+
- * shows its own "Copied" confirmation, so the toast is only for older versions.
- */
-fun copyStreamUrl(ctx: Context, channel: Channel) {
-    // An Ace Stream channel arrives as an engine URL (http://127.0.0.1:6878/ace/getstream?
-    // infohash=…), which is only good on the phone that made it. The acestream:// link is
-    // what other players and other people can use, so that is what gets copied.
-    val ace = AceStream.link(channel.url)
-    val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText(channel.clean, ace ?: channel.url))
-    if (Build.VERSION.SDK_INT < 33) {
-        Toast.makeText(ctx, if (ace != null) "Ace Stream link copied" else "Stream address copied", Toast.LENGTH_SHORT).show()
-    }
-}
-
-/**
  * Hands an Ace Stream channel's acestream:// link to the Ace Stream app — that app
  * specifically, not whichever apps claim the scheme (Ace M3U does too), so there is no
  * chooser in the way.
@@ -317,44 +300,6 @@ fun openInAceStream(ctx: Context, channel: Channel) {
     } catch (e: ActivityNotFoundException) {
         Toast.makeText(ctx, "Ace Stream can't open this link", Toast.LENGTH_SHORT).show()
     }
-}
-
-/**
- * What press-and-hold on a channel offers. An ordinary stream has one thing worth doing —
- * copy its address — so it just does it. An Ace Stream channel has two: copy the
- * acestream:// link, or open it in the Ace Stream app itself.
- */
-fun holdChannel(ctx: Context, channel: Channel, showActions: (Channel) -> Unit) {
-    if (AceStream.link(channel.url) == null) copyStreamUrl(ctx, channel) else showActions(channel)
-}
-
-/** The press-and-hold menu for an Ace Stream channel; see [holdChannel]. */
-@Composable
-fun ChannelActions(channel: Channel, onDismiss: () -> Unit) {
-    val ctx = LocalContext.current
-    val ace = AceStream.link(channel.url)
-    if (ace == null) {
-        // An ordinary stream has nothing to choose between: copy and close. Done as an
-        // effect, once — not as a side effect of composition, which can run twice.
-        LaunchedEffect(channel) { copyStreamUrl(ctx, channel); onDismiss() }
-        return
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(channel.clean) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                Text(ace, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TvActionButton("Open in Ace Stream", { openInAceStream(ctx, channel); onDismiss() }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
-                TvActionButton(
-                    if (ace.startsWith("magnet:")) "Copy magnet link" else "Copy Ace Stream link",
-                    { copyStreamUrl(ctx, channel); onDismiss() }, icon = Icons.Rounded.ContentCopy,
-                )
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }
 
 fun formatBytes(b: Long): String = when {

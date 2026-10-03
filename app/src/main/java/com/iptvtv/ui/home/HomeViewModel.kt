@@ -77,6 +77,10 @@ class HomeViewModel(
         viewModelScope.launch { repo.noteWatched(channel) }
     }
 
+    fun toggleFavourite(channel: Channel) {
+        viewModelScope.launch { repo.toggleFavourite(channel) }
+    }
+
     fun addSource(name: String, url: String) {
         viewModelScope.launch { repo.addUrlSource(name, url) }
     }
