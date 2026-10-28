@@ -68,7 +68,7 @@ class LegacyMigration(
             val rest = key.substringAfter('|', "")
             if (rest.isBlank()) return@forEach
             val cleanKey = if (rest.contains("://")) {
-                dao.channels(sourceId, "", null, false).first().firstOrNull { it.url == rest }?.cleanKey ?: return@forEach
+                dao.channels(listOf(sourceId), "", null, false).first().firstOrNull { it.url == rest }?.cleanKey ?: return@forEach
             } else Channel.cleanKey(rest)
             dao.addFavourite(FavouriteEntity(sourceId, cleanKey, now))
         }

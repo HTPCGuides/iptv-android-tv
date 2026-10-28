@@ -29,9 +29,12 @@ interface IptvRepository {
     val sources: Flow<List<Source>>
     fun source(id: String): Flow<Source?>
 
-    fun channels(sourceId: String, filter: ChannelFilter): Flow<List<Channel>>
+    /** Channels of one source, or of several shown as one list (a feed in two of them appears once). */
+    fun channels(sourceIds: List<String>, filter: ChannelFilter): Flow<List<Channel>>
     /** Every group named in a source's playlist, most-populated first. */
-    fun groups(sourceId: String): Flow<List<String>>
+    fun groups(sourceIds: List<String>): Flow<List<String>>
+    fun channels(sourceId: String, filter: ChannelFilter): Flow<List<Channel>> = channels(listOf(sourceId), filter)
+    fun groups(sourceId: String): Flow<List<String>> = groups(listOf(sourceId))
 
     /** Favourite keys ([Channel.favKey]). */
     val favourites: Flow<Set<String>>
@@ -52,6 +55,15 @@ interface IptvRepository {
     suspend fun removeSource(id: String)
 
     suspend fun toggleFavourite(channel: Channel)
+
+    /**
+     * Saves a freshly built Ace Stream playlist as a new version, named for the moment it was
+     * built. Older versions are pruned when [Settings.aceKeepVersions] says so. Null when the
+     * playlist held no channels — nothing is saved then.
+     */
+    suspend fun saveAceVersion(text: String): Source?
+    suspend fun removeSources(ids: Collection<String>)
+    suspend fun setAceKeepVersions(n: Int)
     suspend fun noteWatched(channel: Channel)
 
     suspend fun setHideGeoBlocked(on: Boolean)

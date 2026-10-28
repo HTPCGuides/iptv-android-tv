@@ -2,6 +2,19 @@
 
 package com.iptvtv.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.SatelliteAlt
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
+import com.iptvtv.ui.TvIconButton
 import com.iptvtv.ui.screenPadding
 import com.iptvtv.ui.ReadableWidth
 import androidx.compose.ui.text.input.KeyboardType
@@ -92,10 +105,16 @@ import com.iptvtv.ui.formatBytes
 fun HomeRoute(
     onOpenSource: (Source) -> Unit,
     onPlay: () -> Unit,
-    viewModel: HomeViewModel = containerViewModel { c, _ -> HomeViewModel(c.repository, c.playback, c.ready, c.aceEngine) },
+    onOpenSources: (List<Source>) -> Unit = {},
+    viewModel: HomeViewModel = containerViewModel { c, _ -> HomeViewModel(c.repository, c.playback, c.ready, c.aceEngine, c.aceBuilder) },
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
+    // Any number of playlist files from this device's storage at once. The type filter is
+    // loose on purpose: file managers label .m3u files every way imaginable.
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        viewModel.importFiles(ctx, uris)
+    }
     val aceEngine = appContainer().aceEngine
     // Cache size and the engine's state both change while Home is away; re-read on return.
     LaunchedEffect(Unit) { viewModel.refresh() }
@@ -112,8 +131,28 @@ fun HomeRoute(
         onAceStreamSettings = { aceEngine.appSettings()?.let(ctx::startActivity) },
         onCheckAceEngine = viewModel::refresh,
         onToggleFavourite = viewModel::toggleFavourite,
+        sourceActions = SourceActions(
+            openTogether = onOpenSources,
+            refresh = viewModel::refreshSources,
+            remove = viewModel::removeSources,
+            buildAce = viewModel::buildAceVersion,
+            pickFiles = { pickFiles.launch(arrayOf("*/*")) },
+            setAceKeep = viewModel::setAceKeepVersions,
+            dismissActivity = viewModel::dismissActivity,
+        ),
     )
 }
+
+/** What Home can do to several playlists at once, and the Ace Stream build. */
+data class SourceActions(
+    val openTogether: (List<Source>) -> Unit = {},
+    val refresh: (List<Source>) -> Unit = {},
+    val remove: (List<Source>) -> Unit = {},
+    val buildAce: () -> Unit = {},
+    val pickFiles: () -> Unit = {},
+    val setAceKeep: (Int) -> Unit = {},
+    val dismissActivity: () -> Unit = {},
+)
 
 @Composable
 fun HomeScreen(
@@ -129,6 +168,7 @@ fun HomeScreen(
     onAceStreamSettings: () -> Unit = {},
     onCheckAceEngine: () -> Unit = {},
     onToggleFavourite: (Channel) -> Unit = {},
+    sourceActions: SourceActions = SourceActions(),
 ) {
     val cs = MaterialTheme.colorScheme
     when (uiState) {
@@ -137,7 +177,7 @@ fun HomeScreen(
         }
         is HomeUiState.Ready -> HomeContent(
             uiState, onOpenSource, onPlay, onAddSource, onRemoveSource, onHideGeoBlocked, onChoosePrebuffer, onClearCache,
-            onOpenAceStream, onAceStreamSettings, onCheckAceEngine, onToggleFavourite,
+            onOpenAceStream, onAceStreamSettings, onCheckAceEngine, onToggleFavourite, sourceActions,
         )
     }
 }
@@ -156,8 +196,17 @@ private fun HomeContent(
     onAceStreamSettings: () -> Unit,
     onCheckAceEngine: () -> Unit,
     onToggleFavourite: (Channel) -> Unit,
+    actions: SourceActions,
 ) {
     var showAdd by remember { mutableStateOf(false) }
+    // Selecting several sources: long-press a tile (or Select) to start, tap to add or drop.
+    var selecting by rememberSaveable { mutableStateOf(false) }
+    var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val selected = state.sources.filter { it.id in selectedIds }
+    var removingMany by remember { mutableStateOf<List<Source>?>(null) }
+    fun endSelection() { selecting = false; selectedIds = emptyList() }
+    fun toggle(s: Source) { selectedIds = if (s.id in selectedIds) selectedIds - s.id else selectedIds + s.id }
+    val aceInstalled = state.aceEngine != AceEngineState.NOT_INSTALLED
     val favourites = remember(state.favourites) { state.favourites.map { it.favKey }.toSet() }
     var removing by remember { mutableStateOf<Source?>(null) }
     val cs = MaterialTheme.colorScheme
@@ -177,7 +226,16 @@ private fun HomeContent(
         )
 
         Spacer(Modifier.height(Space.xl))
-        SectionHeader(Icons.Rounded.PlaylistPlay, "Sources")
+        SourcesHeader(
+            selecting = selecting,
+            selected = selected,
+            onStart = { selecting = true },
+            onOpenTogether = { actions.openTogether(selected); endSelection() },
+            onRefresh = { actions.refresh(selected); endSelection() },
+            onRemove = { removingMany = selected.filterNot { it.builtIn } },
+            onSelectAll = { selectedIds = state.sources.map { it.id } },
+            onDone = ::endSelection,
+        )
         Spacer(Modifier.height(Space.md))
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(Space.md),
@@ -185,8 +243,13 @@ private fun HomeContent(
         ) {
             items(state.sources, key = { it.id }) { s ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    SourceTile(s, onClick = { onOpenSource(s) })
-                    if (!s.builtIn) {
+                    SourceTile(
+                        s,
+                        selection = if (selecting) s.id in selectedIds else null,
+                        onClick = { if (selecting) toggle(s) else onOpenSource(s) },
+                        onLongClick = { selecting = true; toggle(s) },
+                    )
+                    if (!s.builtIn && !selecting) {
                         Spacer(Modifier.height(Space.sm))
                         // Named for TalkBack — with two custom sources, two buttons both
                         // called "Remove" — and confirmed, since it takes a whole source away.
@@ -198,20 +261,40 @@ private fun HomeContent(
                     }
                 }
             }
-            item {
+            if (aceInstalled && !selecting) {
+                item(key = "ace-build") {
+                    // Built here, from the engine's channel index as it is right now; each
+                    // build is saved as a new version beside the old ones.
+                    val working = state.activity is HomeActivity.Working
+                    TvSurface(onClick = actions.buildAce, modifier = Modifier.width(210.dp).heightIn(min = 116.dp)) {
+                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.Center) {
+                            Icon(Icons.Rounded.SatelliteAlt, null, tint = cs.primary, modifier = Modifier.size(30.dp))
+                            Spacer(Modifier.height(Space.xs))
+                            Text("Fresh from Ace Stream", style = MaterialTheme.typography.titleSmall, color = cs.onSurface)
+                            Text(
+                                if (working) "Building…" else "Build a new version now",
+                                style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            if (!selecting) item {
                 TvSurface(onClick = { showAdd = true }, modifier = Modifier.width(210.dp).height(116.dp)) {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
                         Icon(Icons.Rounded.Add, null, tint = cs.primary, modifier = Modifier.size(30.dp))
                         Spacer(Modifier.height(Space.xs))
                         Text("Add playlist", style = MaterialTheme.typography.titleSmall, color = cs.onSurface)
                         Text(
-                            "Paste an M3U URL", style = MaterialTheme.typography.bodySmall,
+                            "URLs or files", style = MaterialTheme.typography.bodySmall,
                             color = cs.onSurfaceVariant,
                         )
                     }
                 }
             }
         }
+
+        state.activity?.let { ActivityLine(it, actions.dismissActivity) }
 
         if (state.favourites.isNotEmpty()) {
             Spacer(Modifier.height(Space.xl))
@@ -238,17 +321,39 @@ private fun HomeContent(
             SectionHeader(Icons.Rounded.Memory, "Ace Stream engine")
             Spacer(Modifier.height(Space.md))
             Box(Modifier.widthIn(max = ReadableWidth)) {
-                AceEngineCard(state.aceEngine, onOpenAceStream, onAceStreamSettings, onCheckAceEngine)
+                AceEngineCard(
+                    state.aceEngine, onOpenAceStream, onAceStreamSettings, onCheckAceEngine,
+                    keepVersions = state.settings.aceKeepVersions, onKeepVersions = actions.setAceKeep,
+                )
             }
         }
         Spacer(Modifier.height(Space.xl))
 
+        removingMany?.let { list ->
+            AlertDialog(
+                onDismissRequest = { removingMany = null },
+                title = { Text(if (list.size == 1) "Remove “${list.single().name}”?" else "Remove ${list.size} playlists?") },
+                text = {
+                    Text(
+                        "Their channels and favourites go with them. The built-in iptv-org sources stay." +
+                            if (list.any { it.isFile }) " Imported files can only come back by opening them again." else "",
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = { actions.remove(list); removingMany = null; endSelection() }, enabled = list.isNotEmpty()) {
+                        Text("Remove")
+                    }
+                },
+                dismissButton = { TextButton(onClick = { removingMany = null }) { Text("Cancel") } },
+            )
+        }
         removing?.let { s ->
             RemoveSourceDialog(s, onConfirm = { onRemoveSource(s); removing = null }, onCancel = { removing = null })
         }
         if (showAdd) {
             AddPlaylistDialog(
                 onAdd = { n, u -> onAddSource(n, u); showAdd = false },
+                onPickFiles = { showAdd = false; actions.pickFiles() },
                 onCancel = { showAdd = false },
             )
         }
@@ -256,28 +361,127 @@ private fun HomeContent(
 }
 
 @Composable
-private fun SourceTile(s: Source, onClick: () -> Unit) {
+private fun SourceTile(
+    s: Source,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    /** Null outside selection; otherwise whether this tile is picked. */
+    selection: Boolean? = null,
+) {
     val cs = MaterialTheme.colorScheme
-    TvSurface(onClick = onClick, modifier = Modifier.width(210.dp).height(116.dp)) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            if (s.builtIn) {
-                Text(s.emoji, fontSize = 28.sp)   // the flag is the source's identity
-            } else {
-                Icon(Icons.Rounded.PlaylistPlay, null, tint = cs.primary, modifier = Modifier.size(30.dp))
+    TvSurface(
+        onClick = onClick, onLongClick = onLongClick,
+        // A dated Ace Stream title takes two lines; the tile grows rather than clipping it.
+        modifier = Modifier.width(210.dp).heightIn(min = 116.dp)
+            .then(if (selection == true) Modifier.border(2.dp, cs.primary, MaterialTheme.shapes.medium) else Modifier)
+            .semantics { if (selection != null) selected = selection },
+        role = if (selection != null) Role.Checkbox else Role.Button,
+        contentAlignment = Alignment.CenterStart,   // tiles of differing height still centre alike
+    ) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.Center) {
+            // One fixed-height slot for the flag or icon, so a tall emoji (⚽) doesn't push its
+            // tile's name lower than its neighbours'.
+            Row(Modifier.height(34.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    s.builtIn -> Text(s.emoji, fontSize = 28.sp, lineHeight = 34.sp)   // the flag is the source's identity
+                    s.isAce -> Icon(Icons.Rounded.SatelliteAlt, null, tint = cs.primary, modifier = Modifier.size(30.dp))
+                    else -> Icon(Icons.Rounded.PlaylistPlay, null, tint = cs.primary, modifier = Modifier.size(30.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                if (selection != null) {
+                    Icon(
+                        if (selection) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, null,
+                        tint = if (selection) cs.primary else cs.onSurfaceVariant, modifier = Modifier.size(24.dp),
+                    )
+                }
             }
             Spacer(Modifier.height(Space.xs))
             Text(
                 s.name, style = MaterialTheme.typography.titleSmall, color = cs.onSurface,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                maxLines = if (s.isAce) 2 else 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
                 when (s.kind) {
                     SourceKind.BUILT_IN -> "iptv-org"
                     SourceKind.FILE -> "Imported file"
                     SourceKind.URL -> "Custom playlist"
+                    SourceKind.ACE -> "Saved Ace Stream version"
+                    SourceKind.MERGED -> "Several playlists"
                 },
                 style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * The Sources heading, which becomes the selection bar: how many are picked and what can
+ * be done to them together. Actions that can't apply to the pick are left out rather than
+ * shown disabled — built-ins can't be removed, files can't be refetched.
+ */
+@Composable
+private fun SourcesHeader(
+    selecting: Boolean,
+    selected: List<Source>,
+    onStart: () -> Unit,
+    onOpenTogether: () -> Unit,
+    onRefresh: () -> Unit,
+    onRemove: () -> Unit,
+    onSelectAll: () -> Unit,
+    onDone: () -> Unit,
+) {
+    val cs = MaterialTheme.colorScheme
+    if (!selecting) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { SectionHeader(Icons.Rounded.PlaylistPlay, "Sources") }
+            TvActionButton("Select", onStart, icon = Icons.Rounded.Checklist)
+        }
+        return
+    }
+    Column {
+        Text(
+            when (selected.size) { 0 -> "Pick playlists"; 1 -> "1 playlist selected"; else -> "${selected.size} playlists selected" },
+            style = MaterialTheme.typography.titleMedium, color = cs.onSurface,
+        )
+        Spacer(Modifier.height(Space.sm))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            if (selected.isNotEmpty()) {
+                TvActionButton(if (selected.size > 1) "Watch together" else "Open", onOpenTogether, icon = Icons.Rounded.PlaylistPlay)
+                if (selected.any { it.refetchable || it.isAce }) TvActionButton("Update", onRefresh, icon = Icons.Rounded.Refresh)
+                if (selected.any { !it.builtIn }) TvActionButton("Remove", onRemove, icon = Icons.Rounded.Close)
+            }
+            TvActionButton("Select all", onSelectAll, icon = Icons.Rounded.DoneAll)
+            TvActionButton("Done", onDone, icon = Icons.Rounded.Check)
+        }
+    }
+}
+
+/** What was just done to the playlists — or is being done — with a way to put it away. */
+@Composable
+private fun ActivityLine(activity: HomeActivity, onDismiss: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val (text, tint) = when (activity) {
+        is HomeActivity.Working -> activity.message to cs.onSurfaceVariant
+        is HomeActivity.Done -> activity.message to cs.primary
+        is HomeActivity.Failed -> activity.message to cs.tertiary
+    }
+    Row(
+        Modifier.padding(top = Space.sm).widthIn(max = ReadableWidth).semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (activity is HomeActivity.Working) {
+            CircularProgressIndicator(color = cs.primary, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+        } else {
+            Icon(
+                if (activity is HomeActivity.Done) Icons.Rounded.CheckCircle else Icons.Rounded.WarningAmber,
+                null, tint = tint, modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(Space.md))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = tint, modifier = Modifier.weight(1f, fill = false))
+        if (activity !is HomeActivity.Working) {
+            Spacer(Modifier.width(Space.sm))
+            TvIconButton(Icons.Rounded.Close, "Dismiss", onDismiss, tint = cs.onSurfaceVariant)
         }
     }
 }
@@ -431,6 +635,8 @@ private fun AceEngineCard(
     onOpen: () -> Unit,
     onSettings: () -> Unit,
     onCheck: () -> Unit,
+    keepVersions: Int = 0,
+    onKeepVersions: (Int) -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     Column(
@@ -474,6 +680,17 @@ private fun AceEngineCard(
             }
             TvActionButton("Check again", onCheck, icon = Icons.Rounded.Refresh)
         }
+        Spacer(Modifier.height(Space.lg))
+        Text("Saved versions", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+        Text(
+            "Each “Fresh from Ace Stream” build is saved as its own playlist, named for when it was built.",
+            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(Space.sm))
+        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            TvChip("Keep all", keepVersions == 0) { onKeepVersions(0) }
+            TvChip("Keep newest 10", keepVersions == 10) { onKeepVersions(10) }
+        }
     }
 }
 
@@ -503,7 +720,7 @@ private fun RemoveSourceDialog(source: Source, onConfirm: () -> Unit, onCancel: 
 }
 
 @Composable
-private fun AddPlaylistDialog(onAdd: (String, String) -> Unit, onCancel: () -> Unit) {
+private fun AddPlaylistDialog(onAdd: (String, String) -> Unit, onPickFiles: () -> Unit, onCancel: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     AlertDialog(
@@ -512,7 +729,7 @@ private fun AddPlaylistDialog(onAdd: (String, String) -> Unit, onCancel: () -> U
         text = {
             Column {
                 Text(
-                    "Paste the M3U or M3U8 URL from your provider.",
+                    "Paste an M3U or M3U8 URL — or several, one per line.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -526,10 +743,19 @@ private fun AddPlaylistDialog(onAdd: (String, String) -> Unit, onCancel: () -> U
                     url, { url = it },
                     label = { Text("Playlist URL") },
                     placeholder = { Text("https://…/playlist.m3u") },
-                    singleLine = true,
+                    minLines = 2, maxLines = 6,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                val several = url.lines().count { it.isNotBlank() } > 1
+                if (several) {
+                    Text(
+                        "Each one is added as its own playlist, named from its address.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(Space.md))
+                TvActionButton("Choose files on this device…", onPickFiles, icon = Icons.Rounded.FolderOpen)
             }
         },
         confirmButton = { Button(onClick = { onAdd(name, url) }, enabled = url.isNotBlank()) { Text("Add") } },

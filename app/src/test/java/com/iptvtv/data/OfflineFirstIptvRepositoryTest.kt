@@ -186,4 +186,58 @@ class OfflineFirstIptvRepositoryTest {
         assertEquals(60_000, s.prebufferMs)
         assertTrue(s.subtitlesOn && s.hideGeoBlocked)
     }
+
+    private val aceText = """
+        #EXTM3U
+        #EXTINF:-1 group-title="sport",Ace One
+        http://127.0.0.1:6878/ace/getstream?infohash=aaa
+        #EXTINF:-1 group-title="movies",Ace Two
+        http://127.0.0.1:6878/ace/getstream?infohash=bbb
+    """.trimIndent()
+
+    @Test
+    fun `each Ace build is a new dated version, and favourites carry across versions`() = runTest {
+        val v1 = repo.saveAceVersion(aceText)!!
+        clock += 60_000
+        val v2 = repo.saveAceVersion(aceText)!!
+        assertTrue(v1.id != v2.id)
+        assertEquals(SourceKind.ACE, v2.kind)
+        assertTrue(v2.name.startsWith("Ace Stream · "))
+        assertTrue(v2.url.matches(Regex("""ace-stream-\d{4}-\d{2}-\d{2}-\d{4}\.m3u8""")))
+        assertEquals(2, repo.sources.first().count { it.isAce })
+
+        // Starred in the old version, still starred in the new one.
+        repo.toggleFavourite(repo.channels(v1.id, ChannelFilter(query = "Ace One")).first().single())
+        assertTrue(repo.channels(v2.id, ChannelFilter(query = "Ace One")).first().single().favKey in repo.favourites.first())
+        assertEquals(listOf("Ace One"), repo.favouriteChannels.first().map { it.clean })
+
+        assertEquals(RefreshResult.Fresh, repo.refresh(v1, force = true))   // a version never changes
+        assertNull(repo.saveAceVersion("#EXTM3U\n"))
+    }
+
+    @Test
+    fun `keep newest 10 prunes older Ace versions, keep all does not`() = runTest {
+        repeat(12) { clock += 60_000; repo.saveAceVersion(aceText) }
+        assertEquals(12, repo.sources.first().count { it.isAce })
+        repo.setAceKeepVersions(10)
+        val left = repo.sources.first().filter { it.isAce }
+        assertEquals(10, left.size)
+        clock += 60_000
+        val newest = repo.saveAceVersion(aceText)!!
+        assertEquals(10, repo.sources.first().count { it.isAce })
+        assertTrue(repo.sources.first().any { it.id == newest.id })
+    }
+
+    @Test
+    fun `several sources merge into one list, a feed in both shown once`() = runTest {
+        repo.refresh(uk)
+        val v1 = repo.saveAceVersion(aceText)!!
+        clock += 60_000
+        val v2 = repo.saveAceVersion(aceText)!!
+        val merged = repo.channels(listOf(uk.id, v1.id, v2.id), ChannelFilter()).first()
+        assertEquals(3 + 2, merged.size)
+        assertTrue(repo.groups(listOf(uk.id, v1.id)).first().containsAll(listOf("General", "sport")))
+        repo.removeSources(listOf(v1.id, v2.id))
+        assertTrue(repo.sources.first().none { it.isAce })
+    }
 }

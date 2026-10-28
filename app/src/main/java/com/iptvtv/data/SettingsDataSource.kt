@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import com.iptvtv.model.ACE_KEEP_CHOICES
 import com.iptvtv.model.DEFAULT_PREBUFFER_MS
 import com.iptvtv.model.PREBUFFER_CHOICES
 import com.iptvtv.model.Settings
@@ -17,6 +18,7 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
         val hideGeo = booleanPreferencesKey("hide_geo_blocked")
         val subtitles = booleanPreferencesKey("subtitles_on")
         val prebuffer = intPreferencesKey("prebuffer_ms")
+        val aceKeep = intPreferencesKey("ace_keep_versions")
         /** Set once the SharedPreferences-era data has been carried over. */
         val migrated = booleanPreferencesKey("legacy_migrated")
     }
@@ -27,6 +29,7 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
             subtitlesOn = p[Keys.subtitles] ?: false,
             // Anything unknown (an old build's value, a hand-edited store) reads as the default.
             prebufferMs = p[Keys.prebuffer]?.takeIf { it in PREBUFFER_CHOICES } ?: DEFAULT_PREBUFFER_MS,
+            aceKeepVersions = p[Keys.aceKeep]?.takeIf { it in ACE_KEEP_CHOICES } ?: 0,
         )
     }
 
@@ -35,5 +38,6 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
     suspend fun setHideGeoBlocked(on: Boolean) { store.edit { it[Keys.hideGeo] = on } }
     suspend fun setSubtitlesOn(on: Boolean) { store.edit { it[Keys.subtitles] = on } }
     suspend fun setPrebufferMs(ms: Int) { store.edit { it[Keys.prebuffer] = ms } }
+    suspend fun setAceKeepVersions(n: Int) { store.edit { it[Keys.aceKeep] = n } }
     suspend fun markLegacyMigrated() { store.edit { it[Keys.migrated] = true } }
 }

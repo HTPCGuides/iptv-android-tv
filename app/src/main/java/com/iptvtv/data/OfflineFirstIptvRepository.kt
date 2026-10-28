@@ -39,12 +39,16 @@ class OfflineFirstIptvRepository(
 
     override fun source(id: String): Flow<Source?> = dao.source(id).map { it?.toModel() }
 
-    override fun channels(sourceId: String, filter: ChannelFilter): Flow<List<Channel>> =
-        dao.channels(sourceId, filter.query.trim(), filter.group, filter.hideGeoBlocked)
-            .map { rows -> rows.map { it.toModel() } }
+    override fun channels(sourceIds: List<String>, filter: ChannelFilter): Flow<List<Channel>> =
+        dao.channels(sourceIds, filter.query.trim(), filter.group, filter.hideGeoBlocked)
+            .map { rows ->
+                val list = rows.map { it.toModel() }
+                // Merged versions of one playlist carry the same feeds; show each once.
+                if (sourceIds.size > 1) list.distinctBy { it.url } else list
+            }
 
-    override fun groups(sourceId: String): Flow<List<String>> =
-        dao.channels(sourceId, "", null, false).map { rows ->
+    override fun groups(sourceIds: List<String>): Flow<List<String>> =
+        dao.channels(sourceIds, "", null, false).map { rows ->
             rows.flatMap { Channel.splitGroups(it.groupTitle) }
                 .groupingBy { it }.eachCount().entries
                 .sortedByDescending { it.value }.map { it.key }
@@ -62,7 +66,7 @@ class OfflineFirstIptvRepository(
     override val settings: Flow<Settings> = settingsStore.settings
 
     override suspend fun refresh(source: Source, force: Boolean): RefreshResult {
-        if (source.isFile) return RefreshResult.Fresh
+        if (!source.refetchable) return RefreshResult.Fresh
         val row = dao.getSource(source.id) ?: return RefreshResult.Failed("This playlist was removed.")
         val stale = now() - row.fetchedAt > FRESH_FOR_MS || dao.channelCount(source.id) == 0
         if (!force && !stale) return RefreshResult.Fresh
@@ -105,10 +109,31 @@ class OfflineFirstIptvRepository(
 
     override suspend fun removeSource(id: String) = dao.deleteSource(id)
 
+    override suspend fun saveAceVersion(text: String): Source? {
+        val at = now()
+        val id = AceVersionName.id(at)
+        val channels = M3uParser.parse(text, id)
+        if (channels.isEmpty()) return null
+        val source = Source(id, AceVersionName.title(at), AceVersionName.fileName(at), SourceKind.ACE, "🛰")
+        dao.upsertSource(source.toEntity(position = dao.nextSourcePosition()))
+        dao.replaceChannels(id, channels.toEntities(), fetchedAt = at)
+        val keep = settingsStore.settings.first().aceKeepVersions
+        if (keep > 0) dao.aceVersions().drop(keep).forEach { dao.deleteSource(it.id) }
+        return source
+    }
+
+    override suspend fun removeSources(ids: Collection<String>) = ids.forEach { dao.deleteSource(it) }
+
+    override suspend fun setAceKeepVersions(n: Int) {
+        settingsStore.setAceKeepVersions(n)
+        if (n > 0) dao.aceVersions().drop(n).forEach { dao.deleteSource(it.id) }
+    }
+
     override suspend fun toggleFavourite(channel: Channel) {
         val cleanKey = Channel.cleanKey(channel.name)
-        if (favourites.first().contains(channel.favKey)) dao.removeFavourite(channel.sourceId, cleanKey)
-        else dao.addFavourite(FavouriteEntity(channel.sourceId, cleanKey, now()))
+        val scope = Channel.favouriteScope(channel.sourceId)
+        if (favourites.first().contains(channel.favKey)) dao.removeFavourite(scope, cleanKey)
+        else dao.addFavourite(FavouriteEntity(scope, cleanKey, now()))
     }
 
     override suspend fun noteWatched(channel: Channel) {

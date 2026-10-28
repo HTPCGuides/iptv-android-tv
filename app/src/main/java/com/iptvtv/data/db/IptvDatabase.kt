@@ -105,17 +105,21 @@ interface IptvDao {
     @Query(
         """
         SELECT * FROM channels
-        WHERE sourceId = :sourceId
+        WHERE sourceId IN (:sourceIds)
           AND (:query = '' OR name LIKE '%' || :query || '%' OR groupTitle LIKE '%' || :query || '%')
           AND (:group IS NULL OR (';' || groupTitle || ';') LIKE '%;' || :group || ';%')
           AND (NOT :hideGeoBlocked OR name NOT LIKE '%[Geo-blocked]%')
-        ORDER BY position
+        ORDER BY sourceId, position
         """,
     )
-    fun channels(sourceId: String, query: String, group: String?, hideGeoBlocked: Boolean): Flow<List<ChannelEntity>>
+    fun channels(sourceIds: List<String>, query: String, group: String?, hideGeoBlocked: Boolean): Flow<List<ChannelEntity>>
 
-    @Query("SELECT DISTINCT groupTitle FROM channels WHERE sourceId = :sourceId")
-    fun groupTitles(sourceId: String): Flow<List<String>>
+    @Query("SELECT DISTINCT groupTitle FROM channels WHERE sourceId IN (:sourceIds)")
+    fun groupTitles(sourceIds: List<String>): Flow<List<String>>
+
+    /** Saved Ace Stream versions, newest first (their ids sort by build time). */
+    @Query("SELECT * FROM sources WHERE kind = 'ACE' ORDER BY id DESC")
+    suspend fun aceVersions(): List<SourceEntity>
 
     @Query("SELECT COUNT(*) FROM channels WHERE sourceId = :sourceId")
     suspend fun channelCount(sourceId: String): Int
@@ -142,8 +146,9 @@ interface IptvDao {
     @Query(
         """
         SELECT c.* FROM channels c
-        JOIN favourites f ON f.sourceId = c.sourceId AND f.cleanKey = c.cleanKey
-        GROUP BY c.sourceId, c.cleanKey
+        JOIN favourites f ON f.cleanKey = c.cleanKey AND f.sourceId =
+            CASE WHEN c.sourceId LIKE 'ace!_%' ESCAPE '!' THEN 'ace' ELSE c.sourceId END
+        GROUP BY f.sourceId, c.cleanKey
         ORDER BY c.cleanKey
         """,
     )

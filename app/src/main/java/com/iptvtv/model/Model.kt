@@ -28,7 +28,7 @@ data class Channel(
      * "Red Bull TV (1080p)" on different CDNs — and to a viewer those are one
      * channel, so the name is what a favourite is pinned to, not the stream URL.
      */
-    val favKey get() = "$sourceId|${cleanKey(name)}"
+    val favKey get() = "${favouriteScope(sourceId)}|${cleanKey(name)}"
     /** iptv-org packs several groups into one attribute ("Comedy;Movies;Sports"). */
     val groups: List<String> get() = splitGroups(group)
 
@@ -39,6 +39,14 @@ data class Channel(
 
         /** The part of [favKey] after the source: what the favourites table stores. */
         fun cleanKey(name: String): String = cleanName(name).lowercase()
+
+        /**
+         * Where a favourite lives. Usually its own source; but every saved version of the
+         * Ace Stream playlist shares one scope, so a channel starred in last week's version
+         * is still starred in today's.
+         */
+        fun favouriteScope(sourceId: String): String =
+            if (sourceId.startsWith(Source.ACE_ID_PREFIX)) Source.ACE_FAVOURITE_SCOPE else sourceId
 
         fun splitGroups(group: String): List<String> =
             group.split(';').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("Other") }
@@ -52,6 +60,13 @@ enum class SourceKind {
     URL,
     /** A file another app handed over. There is nothing to refresh from: the stored channels are the playlist. */
     FILE,
+    /**
+     * One saved version of the Ace Stream playlist, built on this device from the engine's
+     * live channel index. Each rebuild is a new version; the old ones stay until deleted.
+     */
+    ACE,
+    /** Several sources shown as one channel list. Never stored; made up for the screen. */
+    MERGED,
 }
 
 /** A playlist source — the four built-ins, plus anything the user adds or another app hands over. */
@@ -65,6 +80,9 @@ data class Source(
 ) {
     val builtIn get() = kind == SourceKind.BUILT_IN
     val isFile get() = kind == SourceKind.FILE
+    val isAce get() = kind == SourceKind.ACE
+    /** Has an address to fetch again: a built-in or a pasted URL. Files and Ace versions are fixed. */
+    val refetchable get() = kind == SourceKind.BUILT_IN || kind == SourceKind.URL
 
     companion object {
         val BUILT_IN = listOf(
@@ -76,6 +94,9 @@ data class Source(
 
         /** Ids for user-added sources, derived from the address so a re-added playlist keeps its favourites. */
         fun idFor(url: String) = "c_" + url.hashCode()
+
+        const val ACE_ID_PREFIX = "ace_"
+        const val ACE_FAVOURITE_SCOPE = "ace"
     }
 }
 
@@ -84,7 +105,12 @@ data class Settings(
     val hideGeoBlocked: Boolean = false,   // kept visible by default — VPN users want them
     val subtitlesOn: Boolean = false,      // most live channels burn subtitles in or carry none at all
     val prebufferMs: Int = DEFAULT_PREBUFFER_MS,
+    /** How many saved Ace Stream versions to keep; 0 keeps every one. */
+    val aceKeepVersions: Int = 0,
 )
+
+/** Choices for [Settings.aceKeepVersions]: every version, or the newest ten. */
+val ACE_KEEP_CHOICES = listOf(0, 10)
 
 /** Pre-buffer choices, in ms. 2.5 s is Media3's own default, so it stays the default here. */
 val PREBUFFER_CHOICES = listOf(1_000, 2_500, 5_000, 10_000, 30_000, 60_000)

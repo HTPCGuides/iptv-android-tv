@@ -15,6 +15,7 @@ fun IptvNavHost(navController: NavHostController) {
         composable<HomeRoute> {
             HomeScreenRoute(
                 onOpenSource = { navController.navigate(ChannelsRoute(it.id)) },
+                onOpenSources = { navController.navigate(ChannelsRoute(it.map { s -> s.id })) },
                 onPlay = { navController.navigate(PlayerRoute) },
             )
         }

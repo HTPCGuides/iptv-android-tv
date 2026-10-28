@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptvtv.model.Channel
 import com.iptvtv.model.Source
+import com.iptvtv.model.SourceKind
 import com.iptvtv.ui.AllGroupsIcon
 import com.iptvtv.ui.Badge
 import com.iptvtv.ui.groupIcon
@@ -215,7 +216,7 @@ fun ChannelsScreen(
                     uiState.message, style = MaterialTheme.typography.bodyMedium, color = cs.error,
                     textAlign = TextAlign.Center,
                 )
-                if (!uiState.source.isFile) {
+                if (uiState.source.refetchable || uiState.source.kind == SourceKind.MERGED) {
                     Spacer(Modifier.height(Space.lg))
                     TvActionButton("Try again", onRefresh, icon = Icons.Rounded.Refresh)
                 }
@@ -294,10 +295,13 @@ private fun Header(
             middle()
         }
         Spacer(Modifier.width(Space.md))
-        if (source != null && !source.builtIn) {
+        // Playlists you added or were handed can be renamed; a merged view is not a playlist.
+        if (source != null && !source.builtIn && source.kind != SourceKind.MERGED) {
             TvIconButton(Icons.Rounded.Edit, "Rename this playlist", { renaming = true }, tint = cs.onSurface)
         }
-        if (source?.isFile != true) {
+        // Only an address can be fetched again; a file or an Ace Stream version is what it is
+        // (a fresh Ace Stream version is built from Home).
+        if (source != null && (source.refetchable || source.kind == SourceKind.MERGED)) {
             TvIconButton(Icons.Rounded.Refresh, "Reload this playlist", onRefresh, tint = cs.onSurface)
         }
     }

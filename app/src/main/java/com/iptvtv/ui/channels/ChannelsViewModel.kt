@@ -1,5 +1,7 @@
 package com.iptvtv.ui.channels
 
+import kotlinx.coroutines.flow.Flow
+import com.iptvtv.model.SourceKind
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -49,19 +51,32 @@ class ChannelsViewModel(
     private val repo: IptvRepository,
     private val playback: PlaybackSession,
 ) : ViewModel() {
-    private val sourceId = savedStateHandle.toRoute<ChannelsRoute>().sourceId
+    private val sourceIds = savedStateHandle.toRoute<ChannelsRoute>().sourceIds
 
     private val query = MutableStateFlow("")
     private val group = MutableStateFlow<String?>(null)
     private val refreshing = MutableStateFlow(false)
     private val error = MutableStateFlow<String?>(null)
 
-    private val source = repo.source(sourceId).filterNotNull()
+    /**
+     * The playlist being shown — or, for several opened together, one made up for the
+     * header: their names joined, never stored, with nothing of its own to rename or reload.
+     */
+    private val source: Flow<Source> =
+        if (sourceIds.size == 1) repo.source(sourceIds.single()).filterNotNull()
+        else repo.sources.map { all ->
+            val picked = all.filter { it.id in sourceIds }
+            Source(
+                id = "merged",
+                name = if (picked.size <= 2) picked.joinToString(" + ") { it.name } else "${picked.size} playlists",
+                url = "", kind = SourceKind.MERGED, emoji = "🗂",
+            )
+        }
     private val filter = combine(query, group, repo.settings) { q, g, s -> ChannelFilter(q, g, s.hideGeoBlocked) }
-    private val channels = filter.flatMapLatest { repo.channels(sourceId, it) }
+    private val channels = filter.flatMapLatest { repo.channels(sourceIds, it) }
 
     val uiState: StateFlow<ChannelsUiState> = combine(
-        source, channels, repo.groups(sourceId), repo.favourites, filter, refreshing, error,
+        source, channels, repo.groups(sourceIds), repo.favourites, filter, refreshing, error,
     ) { values ->
         val src = values[0] as Source
         @Suppress("UNCHECKED_CAST") val list = values[1] as List<Channel>
@@ -84,8 +99,10 @@ class ChannelsViewModel(
         viewModelScope.launch {
             refreshing.value = true
             error.value = null
-            val result = repo.refresh(source.first(), force)
-            if (result is RefreshResult.Failed) error.value = result.message
+            // Each web playlist in the view is fetched; files and Ace versions are fixed.
+            val all = repo.sources.first().filter { it.id in sourceIds }
+            val failures = all.map { repo.refresh(it, force) }.filterIsInstance<RefreshResult.Failed>()
+            if (failures.isNotEmpty()) error.value = failures.first().message
             refreshing.value = false
         }
     }
@@ -104,6 +121,7 @@ class ChannelsViewModel(
     }
 
     fun rename(name: String) {
-        viewModelScope.launch { repo.renameSource(sourceId, name) }
+        if (sourceIds.size != 1) return
+        viewModelScope.launch { repo.renameSource(sourceIds.single(), name) }
     }
 }
