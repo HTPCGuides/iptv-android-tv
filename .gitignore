@@ -16,3 +16,4 @@ local.properties
 
 # Dev-server dashboard status (written by project-status); local, not part of the app
 .ctx7/
+.backups/
