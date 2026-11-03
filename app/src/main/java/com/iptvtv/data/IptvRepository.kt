@@ -64,6 +64,7 @@ interface IptvRepository {
     suspend fun saveAceVersion(text: String): Source?
     suspend fun removeSources(ids: Collection<String>)
     suspend fun setAceKeepVersions(n: Int)
+    suspend fun setAceEngineAddr(addr: String)
     suspend fun noteWatched(channel: Channel)
 
     suspend fun setHideGeoBlocked(on: Boolean)

@@ -129,6 +129,8 @@ class OfflineFirstIptvRepository(
         if (n > 0) dao.aceVersions().drop(n).forEach { dao.deleteSource(it.id) }
     }
 
+    override suspend fun setAceEngineAddr(addr: String) = settingsStore.setAceEngineAddr(addr)
+
     override suspend fun toggleFavourite(channel: Channel) {
         val cleanKey = Channel.cleanKey(channel.name)
         val scope = Channel.favouriteScope(channel.sourceId)

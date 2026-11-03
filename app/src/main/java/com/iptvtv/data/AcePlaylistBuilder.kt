@@ -22,13 +22,16 @@ sealed interface AceBuild {
 class AcePlaylistBuilder(
     private val client: EngineClient,
     private val default: CoroutineDispatcher,
-    private val engineAddr: String = EngineAddress.LOCAL,
 ) {
-    suspend fun build(onProgress: (channels: Int) -> Unit = {}): AceBuild {
+    /** Reads [engineAddr]'s channel index (host:port; the default is this device's engine). */
+    suspend fun build(engineAddr: String = EngineAddress.LOCAL, onProgress: (channels: Int) -> Unit = {}): AceBuild {
         try {
             client.info(engineAddr)
         } catch (e: EngineError) {
-            return AceBuild.Failed("Ace Stream's engine isn't answering. Open Ace Stream, then try again.")
+            return AceBuild.Failed(
+                if (EngineAddress.isLocal(engineAddr)) "Ace Stream's engine isn't answering. Open Ace Stream, then try again."
+                else "No Ace Stream engine answered at $engineAddr. Check the address, and that the engine is running there.",
+            )
         }
         val read = client.searchAll(engineAddr) { _, channels, _ -> onProgress(channels) }
         if (read.channels.isEmpty()) {

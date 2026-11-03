@@ -23,9 +23,9 @@ class AceEngine(private val ctx: Context) {
     val installed get() = installedPackage != null
 
     /** Asks the engine's local API for its version; false when nothing answers within a moment. */
-    suspend fun running(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun running(addr: String = "127.0.0.1:6878"): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL(STATUS_URL).openConnection() as HttpURLConnection).apply {
+            val conn = (URL("http://$addr$STATUS_PATH").openConnection() as HttpURLConnection).apply {
                 connectTimeout = 1_500; readTimeout = 1_500
             }
             try { conn.responseCode in 200..299 } finally { conn.disconnect() }
@@ -43,6 +43,6 @@ class AceEngine(private val ctx: Context) {
 
     companion object {
         private val PACKAGES = listOf("org.acestream.media", "org.acestream.node", "org.acestream.core")
-        private const val STATUS_URL = "http://127.0.0.1:6878/webui/api/service?method=get_version"
+        private const val STATUS_PATH = "/webui/api/service?method=get_version"
     }
 }

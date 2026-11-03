@@ -2,6 +2,9 @@
 
 package com.iptvtv.ui.home
 
+import androidx.compose.material.icons.rounded.Edit
+import com.iptvtv.model.DEFAULT_ACE_ENGINE
+import com.iptvtv.ace.EngineAddress
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.rounded.Check
@@ -138,6 +141,7 @@ fun HomeRoute(
             buildAce = viewModel::buildAceVersion,
             pickFiles = { pickFiles.launch(arrayOf("*/*")) },
             setAceKeep = viewModel::setAceKeepVersions,
+            setAceEngine = viewModel::setAceEngineAddr,
             dismissActivity = viewModel::dismissActivity,
         ),
     )
@@ -151,6 +155,7 @@ data class SourceActions(
     val buildAce: () -> Unit = {},
     val pickFiles: () -> Unit = {},
     val setAceKeep: (Int) -> Unit = {},
+    val setAceEngine: (String) -> Unit = {},
     val dismissActivity: () -> Unit = {},
 )
 
@@ -316,7 +321,7 @@ private fun HomeContent(
             OptionsSection(state.settings, state.cacheBytes, onHideGeoBlocked, onChoosePrebuffer, onClearCache)
         }
 
-        if (state.aceEngine != AceEngineState.NOT_INSTALLED) {
+        run {
             Spacer(Modifier.height(Space.xl))
             SectionHeader(Icons.Rounded.Memory, "Ace Stream engine")
             Spacer(Modifier.height(Space.md))
@@ -324,6 +329,7 @@ private fun HomeContent(
                 AceEngineCard(
                     state.aceEngine, onOpenAceStream, onAceStreamSettings, onCheckAceEngine,
                     keepVersions = state.settings.aceKeepVersions, onKeepVersions = actions.setAceKeep,
+                    engineAddr = state.settings.aceEngineAddr, onEngineAddr = actions.setAceEngine,
                 )
             }
         }
@@ -637,8 +643,12 @@ private fun AceEngineCard(
     onCheck: () -> Unit,
     keepVersions: Int = 0,
     onKeepVersions: (Int) -> Unit = {},
+    engineAddr: String = DEFAULT_ACE_ENGINE,
+    onEngineAddr: (String) -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
+    var editingAddr by remember { mutableStateOf(false) }
+    val onThisDevice = EngineAddress.isLocal(engineAddr)
     Column(
         Modifier
             .fillMaxWidth()
@@ -651,6 +661,7 @@ private fun AceEngineCard(
             val (label, tint) = when (engine) {
                 AceEngineState.RUNNING -> "Engine running" to cs.primary
                 AceEngineState.STOPPED -> "Engine not running" to cs.tertiary
+                AceEngineState.NOT_INSTALLED -> "Ace Stream isn't installed here" to cs.onSurfaceVariant
                 else -> "Checking the engine…" to cs.onSurfaceVariant
             }
             Icon(
@@ -661,9 +672,14 @@ private fun AceEngineCard(
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
                 Text(
-                    "Ace Stream channels play through the Ace Stream app's engine. The phone stops it in " +
-                        "the background to save battery, taking the stream with it — set its battery use to " +
-                        "Unrestricted and it stays up.",
+                    when {
+                        engine == AceEngineState.NOT_INSTALLED ->
+                            "Point this at an Ace Stream engine on another device — a TV box or a PC — and build its playlist here."
+                        !onThisDevice -> "Reading the engine at $engineAddr."
+                        else -> "Ace Stream channels play through the Ace Stream app's engine. The phone stops it in " +
+                            "the background to save battery, taking the stream with it — set its battery use to " +
+                            "Unrestricted and it stays up."
+                    },
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                 )
             }
@@ -674,20 +690,38 @@ private fun AceEngineCard(
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
             verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
-            TvActionButton("Allow in background", onSettings, icon = Icons.Rounded.BatterySaver)
-            if (engine == AceEngineState.STOPPED) {
+            if (onThisDevice && engine != AceEngineState.NOT_INSTALLED) {
+                TvActionButton("Allow in background", onSettings, icon = Icons.Rounded.BatterySaver)
+            }
+            if (onThisDevice && engine == AceEngineState.STOPPED) {
                 TvActionButton("Start engine", onOpen, icon = Icons.AutoMirrored.Rounded.OpenInNew)
             }
             TvActionButton("Check again", onCheck, icon = Icons.Rounded.Refresh)
         }
         Spacer(Modifier.height(Space.lg))
-        Text("Saved versions", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+        // Ace M3U's default is the engine on this device; any engine on the network works.
+        val indent = Modifier.padding(start = 24.dp + Space.md)   // under the status text, not the icon
+        Row(indent, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Engine address", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+                Text(
+                    engineAddr + if (onThisDevice) " · this device" else "",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                )
+            }
+            TvActionButton("Change", { editingAddr = true }, icon = Icons.Rounded.Edit)
+        }
+        if (editingAddr) {
+            EngineAddressDialog(engineAddr, onSave = { onEngineAddr(it); editingAddr = false }, onCancel = { editingAddr = false })
+        }
+        Spacer(Modifier.height(Space.lg))
+        Text("Saved versions", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface, modifier = indent)
         Text(
             "Each “Fresh from Ace Stream” build is saved as its own playlist, named for when it was built.",
-            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, modifier = indent,
         )
         Spacer(Modifier.height(Space.sm))
-        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+        Row(indent.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             TvChip("Keep all", keepVersions == 0) { onKeepVersions(0) }
             TvChip("Keep newest 10", keepVersions == 10) { onKeepVersions(10) }
         }
@@ -716,6 +750,37 @@ private fun RemoveSourceDialog(source: Source, onConfirm: () -> Unit, onCancel: 
         },
         confirmButton = { Button(onClick = onConfirm) { Text("Remove") } },
         dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun EngineAddressDialog(current: String, onSave: (String) -> Unit, onCancel: () -> Unit) {
+    var text by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Ace Stream engine") },
+        text = {
+            Column {
+                Text(
+                    "Where “Fresh from Ace Stream” reads its channel list. $DEFAULT_ACE_ENGINE is the Ace Stream " +
+                        "app on this device; for another device, enter its address, like 192.168.1.20.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(Space.md))
+                OutlinedTextField(
+                    text, { text = it }, label = { Text("Host or host:port") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(text) }) { Text("Save") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { onSave(DEFAULT_ACE_ENGINE) }) { Text("Use this device") }
+                TextButton(onClick = onCancel) { Text("Cancel") }
+            }
+        },
     )
 }
 

@@ -1,5 +1,8 @@
 package com.iptvtv.ui.home
 
+import kotlinx.coroutines.flow.first
+import com.iptvtv.model.DEFAULT_ACE_ENGINE
+import com.iptvtv.ace.EngineAddress
 import android.content.Context
 import android.net.Uri
 import com.iptvtv.data.AceBuild
@@ -86,9 +89,13 @@ class HomeViewModel(
     /** Re-reads what changes while Home is away: cache size, and whether the engine is up. */
     fun refresh() {
         viewModelScope.launch { cacheBytes.value = repo.cacheBytes() }
-        if (aceEngine.installed) {
-            viewModelScope.launch {
-                engine.value = if (aceEngine.running()) AceEngineState.RUNNING else AceEngineState.STOPPED
+        viewModelScope.launch {
+            // An engine elsewhere on the network counts even where the Ace app isn't installed.
+            val addr = repo.settings.first().aceEngineAddr
+            engine.value = when {
+                !aceEngine.installed && EngineAddress.isLocal(addr) -> AceEngineState.NOT_INSTALLED
+                aceEngine.running(addr) -> AceEngineState.RUNNING
+                else -> AceEngineState.STOPPED
             }
         }
     }
@@ -124,7 +131,7 @@ class HomeViewModel(
 
     private suspend fun buildAce(): Boolean {
         activity.value = HomeActivity.Working("Reading Ace Stream's channel list…")
-        return when (val r = aceBuilder.build { n -> activity.value = HomeActivity.Working("Reading Ace Stream's channel list… $n channels") }) {
+        return when (val r = aceBuilder.build(repo.settings.first().aceEngineAddr) { n -> activity.value = HomeActivity.Working("Reading Ace Stream's channel list… $n channels") }) {
             is AceBuild.Failed -> { activity.value = HomeActivity.Failed(r.message); false }
             is AceBuild.Built -> {
                 val saved = repo.saveAceVersion(r.text)
@@ -196,6 +203,20 @@ class HomeViewModel(
             }
             activity.value = if (problems.isEmpty()) HomeActivity.Done("Imported ${count(added, "playlist")}")
             else HomeActivity.Failed("Imported ${count(added, "playlist")}. ${problems.joinToString(" ")}")
+        }
+    }
+
+    /** Accepts what people type — `192.168.1.5`, `host:6878`, `http://host:6878/`. Blank resets to this device. */
+    fun setAceEngineAddr(input: String) {
+        val addr = if (input.isBlank()) DEFAULT_ACE_ENGINE else EngineAddress.normalize(input)
+        if (addr == null) {
+            activity.value = HomeActivity.Failed("“$input” isn't an engine address. Use host or host:port, like 192.168.1.5:6878.")
+            return
+        }
+        viewModelScope.launch {
+            repo.setAceEngineAddr(addr)
+            engine.value = AceEngineState.CHECKING
+            engine.value = if (aceEngine.running(addr)) AceEngineState.RUNNING else AceEngineState.STOPPED
         }
     }
 

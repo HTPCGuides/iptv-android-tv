@@ -107,7 +107,15 @@ data class Settings(
     val prebufferMs: Int = DEFAULT_PREBUFFER_MS,
     /** How many saved Ace Stream versions to keep; 0 keeps every one. */
     val aceKeepVersions: Int = 0,
+    /**
+     * The Ace Stream engine "Fresh from Ace Stream" reads, as host:port. The default is
+     * Ace M3U's: the Ace Stream app on this device. Another device's engine works too.
+     */
+    val aceEngineAddr: String = DEFAULT_ACE_ENGINE,
 )
+
+/** Ace M3U's default engine address: the Ace Stream app on the same device. */
+const val DEFAULT_ACE_ENGINE = "127.0.0.1:6878"
 
 /** Choices for [Settings.aceKeepVersions]: every version, or the newest ten. */
 val ACE_KEEP_CHOICES = listOf(0, 10)
