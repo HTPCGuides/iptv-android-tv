@@ -2,6 +2,7 @@
 
 package com.iptvtv.ui.home
 
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material.icons.rounded.Edit
 import com.iptvtv.model.DEFAULT_ACE_ENGINE
 import com.iptvtv.model.DEFAULT_ACE_PROFILE
@@ -656,6 +657,11 @@ private fun AceEngineCard(
     val cs = MaterialTheme.colorScheme
     var editingAddr by remember { mutableStateOf(false) }
     val onThisDevice = EngineAddress.isLocal(engineAddr)
+    // Content sits under the status text, past the icon — unless the card is too narrow for
+    // that (a phone at large font sizes), where the inset clipped "Allow in background".
+    val config = LocalConfiguration.current
+    val roomy = config.screenWidthDp / config.fontScale >= 340f
+    val inset = if (roomy) 24.dp + Space.md else 0.dp
     Column(
         Modifier
             .fillMaxWidth()
@@ -693,7 +699,7 @@ private fun AceEngineCard(
         }
         Spacer(Modifier.height(Space.md))
         FlowRow(
-            Modifier.padding(start = 24.dp + Space.md),
+            Modifier.padding(start = inset),
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
             verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
@@ -707,9 +713,15 @@ private fun AceEngineCard(
         }
         Spacer(Modifier.height(Space.lg))
         // Ace M3U's default is the engine on this device; any engine on the network works.
-        val indent = Modifier.padding(start = 24.dp + Space.md)   // under the status text, not the icon
-        Row(indent, verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        val indent = Modifier.padding(start = inset)
+        // Wraps the Change button under the address rather than squeezing the address into
+        // two lines mid-number ("127.0.0.1:68 / 78").
+        FlowRow(
+            indent.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
+            Column(Modifier.padding(end = Space.md)) {
                 Text("Engine address", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
                 Text(
                     engineAddr + if (onThisDevice) " · this device" else "",
