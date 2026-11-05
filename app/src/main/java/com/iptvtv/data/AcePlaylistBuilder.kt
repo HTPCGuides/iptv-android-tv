@@ -4,6 +4,7 @@ import com.iptvtv.ace.EngineAddress
 import com.iptvtv.ace.EngineClient
 import com.iptvtv.ace.EngineError
 import com.iptvtv.ace.Generator
+import com.iptvtv.ace.Profile
 import com.iptvtv.ace.Profiles
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -15,8 +16,8 @@ sealed interface AceBuild {
 
 /**
  * Builds the Ace Stream playlist live on this device, the way Ace M3U and the
- * m3u_gen_acestream tool do: read the engine's whole channel index, filter it with the
- * tool's default "everything" profile, and render one MPEG-TS entry per source. The player
+ * m3u_gen_acestream tool do: read the engine's whole channel index, filter it with a
+ * profile (the tool's "everything" by default), and render one MPEG-TS entry per source. The player
  * plays those through the engine's HLS endpoint (see [AceStream]).
  */
 class AcePlaylistBuilder(
@@ -24,7 +25,11 @@ class AcePlaylistBuilder(
     private val default: CoroutineDispatcher,
 ) {
     /** Reads [engineAddr]'s channel index (host:port; the default is this device's engine). */
-    suspend fun build(engineAddr: String = EngineAddress.LOCAL, onProgress: (channels: Int) -> Unit = {}): AceBuild {
+    suspend fun build(
+        engineAddr: String = EngineAddress.LOCAL,
+        profile: Profile = Profiles.MPEGTS_ALL,
+        onProgress: (channels: Int) -> Unit = {},
+    ): AceBuild {
         try {
             client.info(engineAddr)
         } catch (e: EngineError) {
@@ -38,9 +43,11 @@ class AcePlaylistBuilder(
             return AceBuild.Failed(read.error?.message ?: "The engine's channel index was empty.")
         }
         return withContext(default) {
-            val profile = Generator.compile(Profiles.MPEGTS_ALL)
-            val playlist = Generator.render(Generator.select(read.channels, profile), profile, engineAddr)
-            AceBuild.Built(playlist.text, read.channels.size, playlist.entries.size)
+            val compiled = Generator.compile(profile)
+            val playlist = Generator.render(Generator.select(read.channels, compiled), compiled, engineAddr)
+            // A narrow profile often matches nothing; say why, rather than "no channels".
+            if (playlist.entries.isEmpty() && profile.emptyMessage != null) AceBuild.Failed(profile.emptyMessage)
+            else AceBuild.Built(playlist.text, read.channels.size, playlist.entries.size)
         }
     }
 }

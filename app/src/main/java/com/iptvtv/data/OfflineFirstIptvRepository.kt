@@ -109,12 +109,12 @@ class OfflineFirstIptvRepository(
 
     override suspend fun removeSource(id: String) = dao.deleteSource(id)
 
-    override suspend fun saveAceVersion(text: String): Source? {
+    override suspend fun saveAceVersion(text: String, label: String?): Source? {
         val at = now()
         val id = AceVersionName.id(at)
         val channels = M3uParser.parse(text, id)
         if (channels.isEmpty()) return null
-        val source = Source(id, AceVersionName.title(at), AceVersionName.fileName(at), SourceKind.ACE, "🛰")
+        val source = Source(id, AceVersionName.title(at, label), AceVersionName.fileName(at, label), SourceKind.ACE, "🛰")
         dao.upsertSource(source.toEntity(position = dao.nextSourcePosition()))
         dao.replaceChannels(id, channels.toEntities(), fetchedAt = at)
         val keep = settingsStore.settings.first().aceKeepVersions
@@ -130,6 +130,8 @@ class OfflineFirstIptvRepository(
     }
 
     override suspend fun setAceEngineAddr(addr: String) = settingsStore.setAceEngineAddr(addr)
+
+    override suspend fun setAceProfile(id: String) = settingsStore.setAceProfile(id)
 
     override suspend fun toggleFavourite(channel: Channel) {
         val cleanKey = Channel.cleanKey(channel.name)

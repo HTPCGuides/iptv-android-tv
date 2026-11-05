@@ -24,6 +24,18 @@ data class ListFilter(
 }
 
 /**
+ * Keeps a source when *any* of these match: a name regex, a country or a language. The
+ * tool's own filters are separate lists that must all pass, so "Portuguese by name, or
+ * tagged Portugal" can't be said with them. This is the app's addition; the tool has no
+ * equivalent, and profiles copied from it leave it unset.
+ */
+data class MatchAny(
+    val nameRx: List<String> = emptyList(),
+    val countries: List<String> = emptyList(),
+    val languages: List<String> = emptyList(),
+)
+
+/**
  * One playlist definition — the tool's `config.Playlist`, field for field. Regex maps
  * are ordered lists because order decides which of several matching keys wins; in Go
  * that order is random (see ENGINE_API.md §2.1).
@@ -50,6 +62,10 @@ data class Profile(
     val checkRespTimeout: Duration = 20.seconds,
     val removeDeadLinkTemplate: String = Profiles.LINK_MPEGTS,
     val removeDeadWorkers: Int = 1,
+    /** App-only: see [MatchAny]. Applied after the tool's filters. */
+    val matchAny: MatchAny? = null,
+    /** App-only: what to tell the user when nothing in the index passes. */
+    val emptyMessage: String? = null,
 ) {
     /** File name the playlist is saved under: the last segment of [outputPath]. */
     val fileName: String get() = outputPath.substringAfterLast('/').substringAfterLast('\\').ifBlank { "playlist.m3u8" }
@@ -105,6 +121,7 @@ object Generator {
         val nameMap = profile.nameRxToCategoriesMap.map { (rx, v) -> regex(rx, "nameRxToCategoriesMap") to v }
         val nameFilter = profile.nameRxFilter.map { regex(it, "nameRxFilter") }
         val nameBlacklist = profile.nameRxBlacklist.map { regex(it, "nameRxBlacklist") }
+        val matchAnyName = profile.matchAny?.nameRx.orEmpty().map { regex(it, "matchAny.nameRx") }
         val entryTemplate = template(profile.entryTemplate, "entryTemplate")
         val deadLinkTemplate = template(profile.removeDeadLinkTemplate, "removeDeadLinkTemplate")
 
@@ -171,6 +188,13 @@ object Generator {
         stage("name") { item ->
             (profile.nameFilter.isEmpty() || profile.nameFilter.any { it.containsMatchIn(item.name) }) &&
                 profile.nameBlacklist.none { it.containsMatchIn(item.name) }
+        }
+        p.matchAny?.let { any ->
+            stage("match") { item ->
+                profile.matchAnyName.any { it.containsMatchIn(item.name) } ||
+                    item.countries.any { c -> any.countries.any { it.equals(c, ignoreCase = true) } } ||
+                    item.languages.any { l -> any.languages.any { it.equals(l, ignoreCase = true) } }
+            }
         }
         return Selection(list, sourcesIn, Rejections(stages))
     }

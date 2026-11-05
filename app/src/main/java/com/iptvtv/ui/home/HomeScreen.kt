@@ -4,7 +4,9 @@ package com.iptvtv.ui.home
 
 import androidx.compose.material.icons.rounded.Edit
 import com.iptvtv.model.DEFAULT_ACE_ENGINE
+import com.iptvtv.model.DEFAULT_ACE_PROFILE
 import com.iptvtv.ace.EngineAddress
+import com.iptvtv.ace.Profiles
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.rounded.Check
@@ -142,6 +144,7 @@ fun HomeRoute(
             pickFiles = { pickFiles.launch(arrayOf("*/*")) },
             setAceKeep = viewModel::setAceKeepVersions,
             setAceEngine = viewModel::setAceEngineAddr,
+            setAceProfile = viewModel::setAceProfile,
             dismissActivity = viewModel::dismissActivity,
         ),
     )
@@ -156,6 +159,7 @@ data class SourceActions(
     val pickFiles: () -> Unit = {},
     val setAceKeep: (Int) -> Unit = {},
     val setAceEngine: (String) -> Unit = {},
+    val setAceProfile: (String) -> Unit = {},
     val dismissActivity: () -> Unit = {},
 )
 
@@ -330,6 +334,7 @@ private fun HomeContent(
                     state.aceEngine, onOpenAceStream, onAceStreamSettings, onCheckAceEngine,
                     keepVersions = state.settings.aceKeepVersions, onKeepVersions = actions.setAceKeep,
                     engineAddr = state.settings.aceEngineAddr, onEngineAddr = actions.setAceEngine,
+                    profileId = state.settings.aceProfile, onProfile = actions.setAceProfile,
                 )
             }
         }
@@ -645,6 +650,8 @@ private fun AceEngineCard(
     onKeepVersions: (Int) -> Unit = {},
     engineAddr: String = DEFAULT_ACE_ENGINE,
     onEngineAddr: (String) -> Unit = {},
+    profileId: String = DEFAULT_ACE_PROFILE,
+    onProfile: (String) -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     var editingAddr by remember { mutableStateOf(false) }
@@ -713,6 +720,19 @@ private fun AceEngineCard(
         }
         if (editingAddr) {
             EngineAddressDialog(engineAddr, onSave = { onEngineAddr(it); editingAddr = false }, onCancel = { editingAddr = false })
+        }
+        Spacer(Modifier.height(Space.lg))
+        val profile = Profiles.choice(profileId)
+        Text("Channels", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface, modifier = indent)
+        Text(
+            if (profile == Profiles.MPEGTS_ALL) "Every channel on Ace Stream's list." else profile.description,
+            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, modifier = indent,
+        )
+        Spacer(Modifier.height(Space.sm))
+        Row(indent.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            Profiles.CHOICES.forEach { p ->
+                TvChip(if (p == Profiles.MPEGTS_ALL) "Everything" else p.title, p == profile) { onProfile(p.id) }
+            }
         }
         Spacer(Modifier.height(Space.lg))
         Text("Saved versions", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface, modifier = indent)

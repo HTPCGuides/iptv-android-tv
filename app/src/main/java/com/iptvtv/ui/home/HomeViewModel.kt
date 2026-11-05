@@ -3,6 +3,7 @@ package com.iptvtv.ui.home
 import kotlinx.coroutines.flow.first
 import com.iptvtv.model.DEFAULT_ACE_ENGINE
 import com.iptvtv.ace.EngineAddress
+import com.iptvtv.ace.Profiles
 import android.content.Context
 import android.net.Uri
 import com.iptvtv.data.AceBuild
@@ -131,10 +132,13 @@ class HomeViewModel(
 
     private suspend fun buildAce(): Boolean {
         activity.value = HomeActivity.Working("Reading Ace Stream's channel list…")
-        return when (val r = aceBuilder.build(repo.settings.first().aceEngineAddr) { n -> activity.value = HomeActivity.Working("Reading Ace Stream's channel list… $n channels") }) {
+        val settings = repo.settings.first()
+        val profile = Profiles.choice(settings.aceProfile)
+        val label = profile.title.takeUnless { profile == Profiles.MPEGTS_ALL }
+        return when (val r = aceBuilder.build(settings.aceEngineAddr, profile) { n -> activity.value = HomeActivity.Working("Reading Ace Stream's channel list… $n channels") }) {
             is AceBuild.Failed -> { activity.value = HomeActivity.Failed(r.message); false }
             is AceBuild.Built -> {
-                val saved = repo.saveAceVersion(r.text)
+                val saved = repo.saveAceVersion(r.text, label)
                 activity.value = if (saved == null) HomeActivity.Failed("The engine returned no playable channels.")
                 else HomeActivity.Done("Saved “${saved.name}” — ${count(r.sources, "channel")}")
                 saved != null
@@ -218,6 +222,10 @@ class HomeViewModel(
             engine.value = AceEngineState.CHECKING
             engine.value = if (aceEngine.running(addr)) AceEngineState.RUNNING else AceEngineState.STOPPED
         }
+    }
+
+    fun setAceProfile(id: String) {
+        viewModelScope.launch { repo.setAceProfile(id) }
     }
 
     fun setAceKeepVersions(n: Int) {

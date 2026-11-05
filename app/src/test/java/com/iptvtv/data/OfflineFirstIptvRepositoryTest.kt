@@ -216,6 +216,16 @@ class OfflineFirstIptvRepositoryTest {
     }
 
     @Test
+    fun `a Portugal build is named for its profile, and the choice is remembered`() = runTest {
+        val v = repo.saveAceVersion(aceText, label = "Portugal")!!
+        assertTrue(v.name, v.name.startsWith("Ace Stream · Portugal · "))
+        assertTrue(v.url, v.url.matches(Regex("""ace-stream-portugal-\d{4}-\d{2}-\d{2}-\d{4}\.m3u8""")))
+        assertEquals("mpegts_all", repo.settings.first().aceProfile)
+        repo.setAceProfile("portugal")
+        assertEquals("portugal", repo.settings.first().aceProfile)
+    }
+
+    @Test
     fun `keep newest 10 prunes older Ace versions, keep all does not`() = runTest {
         repeat(12) { clock += 60_000; repo.saveAceVersion(aceText) }
         assertEquals(12, repo.sources.first().count { it.isAce })

@@ -112,10 +112,15 @@ data class Settings(
      * Ace M3U's: the Ace Stream app on this device. Another device's engine works too.
      */
     val aceEngineAddr: String = DEFAULT_ACE_ENGINE,
+    /** Which channels "Fresh from Ace Stream" keeps: a profile id from `ace.Profiles.CHOICES`. */
+    val aceProfile: String = DEFAULT_ACE_PROFILE,
 )
 
 /** Ace M3U's default engine address: the Ace Stream app on the same device. */
 const val DEFAULT_ACE_ENGINE = "127.0.0.1:6878"
+
+/** Ace M3U's default profile: every source, as MPEG-TS. */
+const val DEFAULT_ACE_PROFILE = "mpegts_all"
 
 /** Choices for [Settings.aceKeepVersions]: every version, or the newest ten. */
 val ACE_KEEP_CHOICES = listOf(0, 10)

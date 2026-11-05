@@ -1,6 +1,7 @@
 package com.iptvtv.data
 
 import com.iptvtv.model.DEFAULT_ACE_ENGINE
+import com.iptvtv.model.DEFAULT_ACE_PROFILE
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -22,6 +23,7 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
         val prebuffer = intPreferencesKey("prebuffer_ms")
         val aceKeep = intPreferencesKey("ace_keep_versions")
         val aceEngine = stringPreferencesKey("ace_engine_addr")
+        val aceProfile = stringPreferencesKey("ace_profile")
         /** Set once the SharedPreferences-era data has been carried over. */
         val migrated = booleanPreferencesKey("legacy_migrated")
     }
@@ -34,6 +36,7 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
             prebufferMs = p[Keys.prebuffer]?.takeIf { it in PREBUFFER_CHOICES } ?: DEFAULT_PREBUFFER_MS,
             aceKeepVersions = p[Keys.aceKeep]?.takeIf { it in ACE_KEEP_CHOICES } ?: 0,
             aceEngineAddr = p[Keys.aceEngine]?.takeIf { it.isNotBlank() } ?: DEFAULT_ACE_ENGINE,
+            aceProfile = p[Keys.aceProfile]?.takeIf { it.isNotBlank() } ?: DEFAULT_ACE_PROFILE,
         )
     }
 
@@ -44,5 +47,6 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
     suspend fun setPrebufferMs(ms: Int) { store.edit { it[Keys.prebuffer] = ms } }
     suspend fun setAceKeepVersions(n: Int) { store.edit { it[Keys.aceKeep] = n } }
     suspend fun setAceEngineAddr(addr: String) { store.edit { it[Keys.aceEngine] = addr } }
+    suspend fun setAceProfile(id: String) { store.edit { it[Keys.aceProfile] = id } }
     suspend fun markLegacyMigrated() { store.edit { it[Keys.migrated] = true } }
 }

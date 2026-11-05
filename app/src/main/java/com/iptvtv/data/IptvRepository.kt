@@ -59,12 +59,14 @@ interface IptvRepository {
     /**
      * Saves a freshly built Ace Stream playlist as a new version, named for the moment it was
      * built. Older versions are pruned when [Settings.aceKeepVersions] says so. Null when the
-     * playlist held no channels — nothing is saved then.
+     * playlist held no channels — nothing is saved then. [label] names the profile it was
+     * built with ("Portugal"); null for the default, everything.
      */
-    suspend fun saveAceVersion(text: String): Source?
+    suspend fun saveAceVersion(text: String, label: String? = null): Source?
     suspend fun removeSources(ids: Collection<String>)
     suspend fun setAceKeepVersions(n: Int)
     suspend fun setAceEngineAddr(addr: String)
+    suspend fun setAceProfile(id: String)
     suspend fun noteWatched(channel: Channel)
 
     suspend fun setHideGeoBlocked(on: Boolean)
