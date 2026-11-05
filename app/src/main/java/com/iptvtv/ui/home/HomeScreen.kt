@@ -2,6 +2,9 @@
 
 package com.iptvtv.ui.home
 
+import com.iptvtv.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material.icons.rounded.Edit
 import com.iptvtv.model.DEFAULT_ACE_ENGINE
@@ -228,7 +231,17 @@ private fun HomeContent(
             .verticalScroll(rememberScrollState())
             .screenPadding(),
     ) {
-        Text("HTPCGuides IPTV", style = MaterialTheme.typography.displaySmall, color = cs.onSurface)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Image(
+                painterResource(R.drawable.ic_logo), contentDescription = null,   // the name beside it says it
+                modifier = Modifier.size(48.dp),
+            )
+            Spacer(Modifier.width(Space.md))
+            Text(
+                "HTPCGuides IPTV", style = MaterialTheme.typography.displaySmall, color = cs.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
         Spacer(Modifier.height(Space.xs))
         Text(
             "Free-to-air channels from iptv-org — plus your own playlists.",

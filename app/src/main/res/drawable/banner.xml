@@ -1,15 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV banner: the app mark on its pale-cyan tile. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="320dp" android:height="180dp"
     android:viewportWidth="320" android:viewportHeight="180">
-    <path android:fillColor="#0B1120" android:pathData="M0,0h320v180h-320z" />
-    <!-- screen -->
-    <path android:fillColor="#38BDF8"
-        android:pathData="M78,46h164a10,10 0 0 1 10,10v66a10,10 0 0 1 -10,10h-164a10,10 0 0 1 -10,-10v-66a10,10 0 0 1 10,-10z" />
-    <path android:fillColor="#0B1120"
-        android:pathData="M88,58h144a4,4 0 0 1 4,4v52a4,4 0 0 1 -4,4h-144a4,4 0 0 1 -4,-4v-52a4,4 0 0 1 4,-4z" />
-    <!-- play triangle -->
-    <path android:fillColor="#38BDF8" android:pathData="M148,72l40,16l-40,16z" />
-    <!-- stand -->
-    <path android:fillColor="#38BDF8" android:pathData="M132,140h56v8h-56z" />
+<path android:pathData="M0.00,0.00 H320.00 A0.00,0.00 0 0 1 320.00,0.00 V180.00 A0.00,0.00 0 0 1 320.00,180.00 H0.00 A0.00,0.00 0 0 1 0.00,180.00 V0.00 A0.00,0.00 0 0 1 0.00,0.00 Z" android:fillColor="#FFDDF3FB" />
+<path android:pathData="M19.00,5.00 H301.00 A14.00,14.00 0 0 1 315.00,19.00 V161.00 A14.00,14.00 0 0 1 301.00,175.00 H19.00 A14.00,14.00 0 0 1 5.00,161.00 V19.00 A14.00,14.00 0 0 1 19.00,5.00 Z" android:strokeColor="#FF08AFDA" android:strokeWidth="6" />
+<group android:translateX="81.7" android:translateY="14.6" android:scaleX="1.45" android:scaleY="1.45">
+<!-- rabbit-ear antenna -->
+<path android:pathData="M54,50 L36,28 M54,50 L72,28" android:strokeColor="#FF003D88" android:strokeWidth="3.5" android:strokeLineCap="round" />
+<!-- the two HTPC Guides characters: bandana and graduation cap -->
+<group android:translateX="34" android:translateY="24" android:scaleX="0.95" android:scaleY="0.95">
+<path android:pathData="M-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 Z" android:fillColor="#FFFFFFFF" android:strokeColor="#FF0B1120" android:strokeWidth="1.2" />
+<path android:pathData="M-10.2,-1.5 A10.2,10.2 0 0 1 10.2,-1.5 Z" android:fillColor="#FF08AFDA" android:strokeColor="#FF0B1120" android:strokeWidth="1" />
+<path android:pathData="M-15,-0.5 a3,2 0 1,0 6,0 a3,2 0 1,0 -6,0 Z" android:fillColor="#FF08AFDA" android:strokeColor="#FF0B1120" android:strokeWidth="0.8" />
+<path android:pathData="M-13.2,3 a2.2,2.8 0 1,0 4.4,0 a2.2,2.8 0 1,0 -4.4,0 Z" android:fillColor="#FF08AFDA" android:strokeColor="#FF0B1120" android:strokeWidth="0.8" />
+</group>
+<group android:translateX="74" android:translateY="24" android:scaleX="0.95" android:scaleY="0.95">
+<path android:pathData="M-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 Z" android:fillColor="#FFFFFFFF" android:strokeColor="#FF0B1120" android:strokeWidth="1.2" />
+<path android:pathData="M-7,-9 L-7,-4.5 Q0,-1.5 7,-4.5 L7,-9 Z" android:fillColor="#FF252A26" />
+<path android:pathData="M-14,-10 L0,-15.5 L14,-10 L0,-5 Z" android:fillColor="#FF252A26" />
+<path android:pathData="M0,-10 L-11,-7 L-11,0" android:strokeColor="#FFC9A227" android:strokeWidth="1.2" />
+<path android:pathData="M-11.30,-1.00 H-10.70 A1.00,1.00 0 0 1 -9.70,0.00 V2.00 A1.00,1.00 0 0 1 -10.70,3.00 H-11.30 A1.00,1.00 0 0 1 -12.30,2.00 V0.00 A1.00,1.00 0 0 1 -11.30,-1.00 Z" android:fillColor="#FFC9A227" />
+</group>
+<!-- the TV -->
+<path android:pathData="M23.04,50.00 H84.96 A7.04,7.04 0 0 1 92.00,57.04 V86.96 A7.04,7.04 0 0 1 84.96,94.00 H23.04 A7.04,7.04 0 0 1 16.00,86.96 V57.04 A7.04,7.04 0 0 1 23.04,50.00 Z" android:fillColor="#FF003D88" />
+<path android:pathData="M24.72,55.72 H83.28 A2.64,2.64 0 0 1 85.92,58.36 V85.64 A2.64,2.64 0 0 1 83.28,88.28 H24.72 A2.64,2.64 0 0 1 22.08,85.64 V58.36 A2.64,2.64 0 0 1 24.72,55.72 Z" android:fillColor="#FF0B1120" />
+<path android:pathData="M48.68,64.08 L64.64,72.00 L48.68,79.92 Z" android:fillColor="#FF08AFDA" />
+</group>
 </vector>
