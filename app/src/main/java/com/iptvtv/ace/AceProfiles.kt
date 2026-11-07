@@ -80,5 +80,9 @@ object Profiles {
     /** What "Fresh from Ace Stream" can build, first is the default. */
     val CHOICES = listOf(MPEGTS_ALL, PORTUGAL)
 
-    fun choice(id: String): Profile = CHOICES.firstOrNull { it.id == id } ?: MPEGTS_ALL
+    /** The chips: the app's own choices, then any playlists from an imported config. */
+    fun choices(imported: List<Profile> = emptyList()): List<Profile> = CHOICES + imported
+
+    fun choice(id: String, imported: List<Profile> = emptyList()): Profile =
+        choices(imported).firstOrNull { it.id == id } ?: MPEGTS_ALL
 }

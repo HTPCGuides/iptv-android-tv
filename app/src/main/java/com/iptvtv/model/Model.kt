@@ -114,6 +114,11 @@ data class Settings(
     val aceEngineAddr: String = DEFAULT_ACE_ENGINE,
     /** Which channels "Fresh from Ace Stream" keeps: a profile id from `ace.Profiles.CHOICES`. */
     val aceProfile: String = DEFAULT_ACE_PROFILE,
+    /**
+     * An imported m3u_gen_acestream config, as the YAML text it came in; its playlists join
+     * the built-in profiles. Empty when none is imported.
+     */
+    val aceConfig: String = "",
 )
 
 /** Ace M3U's default engine address: the Ace Stream app on the same device. */

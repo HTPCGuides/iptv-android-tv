@@ -24,6 +24,7 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
         val aceKeep = intPreferencesKey("ace_keep_versions")
         val aceEngine = stringPreferencesKey("ace_engine_addr")
         val aceProfile = stringPreferencesKey("ace_profile")
+        val aceConfig = stringPreferencesKey("ace_config_yaml")
         /** Set once the SharedPreferences-era data has been carried over. */
         val migrated = booleanPreferencesKey("legacy_migrated")
     }
@@ -37,6 +38,7 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
             aceKeepVersions = p[Keys.aceKeep]?.takeIf { it in ACE_KEEP_CHOICES } ?: 0,
             aceEngineAddr = p[Keys.aceEngine]?.takeIf { it.isNotBlank() } ?: DEFAULT_ACE_ENGINE,
             aceProfile = p[Keys.aceProfile]?.takeIf { it.isNotBlank() } ?: DEFAULT_ACE_PROFILE,
+            aceConfig = p[Keys.aceConfig].orEmpty(),
         )
     }
 
@@ -48,5 +50,6 @@ class SettingsDataSource(private val store: DataStore<Preferences>) {
     suspend fun setAceKeepVersions(n: Int) { store.edit { it[Keys.aceKeep] = n } }
     suspend fun setAceEngineAddr(addr: String) { store.edit { it[Keys.aceEngine] = addr } }
     suspend fun setAceProfile(id: String) { store.edit { it[Keys.aceProfile] = id } }
+    suspend fun setAceConfig(yaml: String) { store.edit { if (yaml.isEmpty()) it.remove(Keys.aceConfig) else it[Keys.aceConfig] = yaml } }
     suspend fun markLegacyMigrated() { store.edit { it[Keys.migrated] = true } }
 }

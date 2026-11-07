@@ -64,6 +64,23 @@ interface IptvRepository {
      */
     suspend fun saveAceVersion(text: String, label: String? = null): Source?
     suspend fun removeSources(ids: Collection<String>)
+
+    /** Removes playlists like [removeSources], keeping what [restoreSources] needs to undo it. */
+    suspend fun removeSourcesUndoably(ids: Collection<String>): RemovedPlaylists
+    suspend fun restoreSources(removed: RemovedPlaylists)
+
+    /**
+     * Takes the feeds playing [urls] out of [sourceIds]' stored channels — for Ace Stream
+     * versions, which nothing re-fetches, so a removal sticks. Undone by [restoreChannels].
+     */
+    suspend fun removeChannels(sourceIds: List<String>, urls: Collection<String>): RemovedChannels
+    suspend fun restoreChannels(removed: RemovedChannels)
+
+    /** [sourceIds]' channels as one M3U playlist, for Share and Save. */
+    suspend fun playlistText(sourceIds: List<String>): String
+
+    /** Stores an imported m3u_gen_acestream config's YAML; empty forgets it. */
+    suspend fun setAceConfig(yaml: String)
     suspend fun setAceKeepVersions(n: Int)
     suspend fun setAceEngineAddr(addr: String)
     suspend fun setAceProfile(id: String)

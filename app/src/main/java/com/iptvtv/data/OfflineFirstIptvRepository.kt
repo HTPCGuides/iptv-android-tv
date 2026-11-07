@@ -124,6 +124,41 @@ class OfflineFirstIptvRepository(
 
     override suspend fun removeSources(ids: Collection<String>) = ids.forEach { dao.deleteSource(it) }
 
+    override suspend fun removeSourcesUndoably(ids: Collection<String>): RemovedPlaylists {
+        val snapshots = ids.mapNotNull { id ->
+            val row = dao.getSource(id)?.takeIf { it.kind != SourceKind.BUILT_IN.name } ?: return@mapNotNull null
+            RemovedPlaylists.Snapshot(row, dao.channelsOf(id), dao.favouritesOf(id), dao.recentsOf(id))
+        }
+        snapshots.forEach { dao.deleteSource(it.source.id) }
+        return RemovedPlaylists(snapshots)
+    }
+
+    override suspend fun restoreSources(removed: RemovedPlaylists) {
+        removed.rows.forEach { s ->
+            dao.upsertSource(s.source)
+            dao.insertChannels(s.channels)
+            dao.insertFavourites(s.favourites)
+            dao.insertRecents(s.recents)
+        }
+    }
+
+    override suspend fun removeChannels(sourceIds: List<String>, urls: Collection<String>): RemovedChannels {
+        // SQLite caps bound variables near 999; a big search can select far more feeds than that.
+        val rows = urls.distinct().chunked(500).flatMap { dao.channelsByUrl(sourceIds, it) }
+        rows.map { it.id }.chunked(500).forEach { dao.deleteChannelRows(it) }
+        return RemovedChannels(rows)
+    }
+
+    override suspend fun restoreChannels(removed: RemovedChannels) = dao.insertChannels(removed.rows)
+
+    override suspend fun playlistText(sourceIds: List<String>): String {
+        val channels = sourceIds.flatMap { id -> dao.channelsOf(id).map { it.toModel() } }
+        // As on screen: a feed in several merged versions is written once.
+        return M3uWriter.write(if (sourceIds.size > 1) channels.distinctBy { it.url } else channels)
+    }
+
+    override suspend fun setAceConfig(yaml: String) = settingsStore.setAceConfig(yaml)
+
     override suspend fun setAceKeepVersions(n: Int) {
         settingsStore.setAceKeepVersions(n)
         if (n > 0) dao.aceVersions().drop(n).forEach { dao.deleteSource(it.id) }

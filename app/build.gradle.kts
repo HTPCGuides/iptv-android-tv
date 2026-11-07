@@ -70,7 +70,7 @@ android {
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "debug"
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {
@@ -121,6 +121,8 @@ dependencies {
     implementation(libs.play.services.cast.framework)
 
     implementation(libs.kotlinx.coroutines.android)
+    // m3u_gen_acestream YAML configs, read with go-yaml's YAML 1.2 rules (see ace/ConfigImport).
+    implementation(libs.snakeyaml.engine)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

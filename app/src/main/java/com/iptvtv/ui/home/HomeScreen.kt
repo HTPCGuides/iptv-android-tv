@@ -109,6 +109,11 @@ import com.iptvtv.ui.TvSurface
 import com.iptvtv.ui.containerViewModel
 import com.iptvtv.ui.ChannelSheet
 import com.iptvtv.ui.formatBytes
+import android.os.Build
+import com.iptvtv.ace.ConfigImport
+import com.iptvtv.ace.Profile
+import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.automirrored.rounded.Undo
 
 @Composable
 fun HomeRoute(
@@ -123,6 +128,9 @@ fun HomeRoute(
     // loose on purpose: file managers label .m3u files every way imaginable.
     val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         viewModel.importFiles(ctx, uris)
+    }
+    val pickConfig = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        viewModel.importAceConfig(ctx, uri)
     }
     val aceEngine = appContainer().aceEngine
     // Cache size and the engine's state both change while Home is away; re-read on return.
@@ -150,6 +158,8 @@ fun HomeRoute(
             setAceEngine = viewModel::setAceEngineAddr,
             setAceProfile = viewModel::setAceProfile,
             dismissActivity = viewModel::dismissActivity,
+            importAceConfig = { pickConfig.launch(arrayOf("*/*")) },
+            forgetAceConfig = viewModel::forgetAceConfig,
         ),
     )
 }
@@ -165,6 +175,8 @@ data class SourceActions(
     val setAceEngine: (String) -> Unit = {},
     val setAceProfile: (String) -> Unit = {},
     val dismissActivity: () -> Unit = {},
+    val importAceConfig: () -> Unit = {},
+    val forgetAceConfig: () -> Unit = {},
 )
 
 @Composable
@@ -349,6 +361,8 @@ private fun HomeContent(
                     keepVersions = state.settings.aceKeepVersions, onKeepVersions = actions.setAceKeep,
                     engineAddr = state.settings.aceEngineAddr, onEngineAddr = actions.setAceEngine,
                     profileId = state.settings.aceProfile, onProfile = actions.setAceProfile,
+                    imported = ConfigImport.storedProfiles(state.settings.aceConfig),
+                    onImportConfig = actions.importAceConfig, onForgetConfig = actions.forgetAceConfig,
                 )
             }
         }
@@ -504,6 +518,10 @@ private fun ActivityLine(activity: HomeActivity, onDismiss: () -> Unit) {
         }
         Spacer(Modifier.width(Space.md))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = tint, modifier = Modifier.weight(1f, fill = false))
+        (activity as? HomeActivity.Done)?.undo?.let { undo ->
+            Spacer(Modifier.width(Space.sm))
+            TvActionButton("Undo", undo, icon = Icons.AutoMirrored.Rounded.Undo)
+        }
         if (activity !is HomeActivity.Working) {
             Spacer(Modifier.width(Space.sm))
             TvIconButton(Icons.Rounded.Close, "Dismiss", onDismiss, tint = cs.onSurfaceVariant)
@@ -666,6 +684,10 @@ private fun AceEngineCard(
     onEngineAddr: (String) -> Unit = {},
     profileId: String = DEFAULT_ACE_PROFILE,
     onProfile: (String) -> Unit = {},
+    /** Playlists from an imported m3u_gen_acestream config; they join the chips. */
+    imported: List<Profile> = emptyList(),
+    onImportConfig: () -> Unit = {},
+    onForgetConfig: () -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     var editingAddr by remember { mutableStateOf(false) }
@@ -747,16 +769,36 @@ private fun AceEngineCard(
             EngineAddressDialog(engineAddr, onSave = { onEngineAddr(it); editingAddr = false }, onCancel = { editingAddr = false })
         }
         Spacer(Modifier.height(Space.lg))
-        val profile = Profiles.choice(profileId)
+        val profile = Profiles.choice(profileId, imported)
         Text("Channels", style = MaterialTheme.typography.bodyLarge, color = cs.onSurface, modifier = indent)
         Text(
             if (profile == Profiles.MPEGTS_ALL) "Every channel on Ace Stream's list." else profile.description,
             style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, modifier = indent,
         )
         Spacer(Modifier.height(Space.sm))
-        Row(indent.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            Profiles.CHOICES.forEach { p ->
+        // Wraps: an imported config can bring several playlists.
+        FlowRow(
+            indent.selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
+            Profiles.choices(imported).forEach { p ->
                 TvChip(if (p == Profiles.MPEGTS_ALL) "Everything" else p.title, p == profile) { onProfile(p.id) }
+            }
+        }
+        // The YAML reader needs Android 7; on 6 the import simply isn't offered.
+        if (Build.VERSION.SDK_INT >= 24) {
+            Spacer(Modifier.height(Space.sm))
+            FlowRow(
+                indent,
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                verticalArrangement = Arrangement.spacedBy(Space.sm),
+            ) {
+                TvActionButton(
+                    if (imported.isEmpty()) "Import m3u_gen_acestream config" else "Import another config",
+                    onImportConfig, icon = Icons.Rounded.FileOpen,
+                )
+                if (imported.isNotEmpty()) TvActionButton("Remove imported", onForgetConfig, icon = Icons.Rounded.Close)
             }
         }
         Spacer(Modifier.height(Space.lg))

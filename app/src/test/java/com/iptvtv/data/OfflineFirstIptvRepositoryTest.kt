@@ -250,4 +250,45 @@ class OfflineFirstIptvRepositoryTest {
         repo.removeSources(listOf(v1.id, v2.id))
         assertTrue(repo.sources.first().none { it.isAce })
     }
+
+    @Test
+    fun `removed playlists come back as they were, favourites and place included`() = runTest {
+        repo.refresh(uk)
+        val v1 = repo.saveAceVersion(aceText)!!
+        val before = repo.sources.first().map { it.id }
+        repo.toggleFavourite(repo.channels(uk.id, ChannelFilter()).first().first())
+
+        val removed = repo.removeSourcesUndoably(listOf(uk.id, v1.id))
+        assertEquals(1, removed.count)   // built-ins aren't removable
+        assertTrue(repo.sources.first().none { it.id == v1.id })
+
+        repo.restoreSources(removed)
+        assertEquals(before, repo.sources.first().map { it.id })
+        assertEquals(2, repo.channels(v1.id, ChannelFilter()).first().size)
+        assertEquals(1, repo.favourites.first().size)
+    }
+
+    @Test
+    fun `channels leave every version shown and come back on undo, in order`() = runTest {
+        val v1 = repo.saveAceVersion(aceText)!!
+        clock += 60_000
+        val v2 = repo.saveAceVersion(aceText)!!
+        val ids = listOf(v1.id, v2.id)
+        val first = repo.channels(ids, ChannelFilter()).first().first()
+
+        val removed = repo.removeChannels(ids, listOf(first.url))
+        assertEquals(1, removed.count)
+        assertTrue(repo.channels(ids, ChannelFilter()).first().none { it.url == first.url })
+
+        repo.restoreChannels(removed)
+        assertEquals(first, repo.channels(v1.id, ChannelFilter()).first().first())
+    }
+
+    @Test
+    fun `a playlist exports as m3u that reads back the same`() = runTest {
+        repo.refresh(uk)
+        val text = repo.playlistText(listOf(uk.id))
+        val back = M3uParser.parse(text, uk.id)
+        assertEquals(repo.channels(uk.id, ChannelFilter()).first(), back)
+    }
 }

@@ -91,6 +91,16 @@ import com.iptvtv.ui.TvIconButton
 import com.iptvtv.ui.TvSurface
 import com.iptvtv.ui.containerViewModel
 import com.iptvtv.ui.ChannelSheet
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import android.widget.Toast
+import kotlinx.coroutines.launch
+import com.iptvtv.ui.PlaylistExport
 
 private fun channelCount(n: Int) = if (n == 1) "1 channel" else "$n channels"
 
@@ -111,6 +121,10 @@ fun ChannelsRoute(
         onClearFilters = viewModel::clearFilters,
         onRefresh = { viewModel.refresh() },
         onRename = viewModel::rename,
+        onRemove = viewModel::removeChannels,
+        onUndoRemove = viewModel::undoRemoval,
+        onDismissRemove = viewModel::dismissRemoval,
+        onExport = viewModel::export,
     )
 }
 
@@ -125,6 +139,10 @@ fun ChannelsScreen(
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
     onRename: (String) -> Unit,
+    onRemove: (List<Channel>) -> Unit = {},
+    onUndoRemove: () -> Unit = {},
+    onDismissRemove: () -> Unit = {},
+    onExport: suspend () -> Pair<String, String> = { "" to "" },
 ) {
     val cs = MaterialTheme.colorScheme
     val focusManager = LocalFocusManager.current
@@ -178,11 +196,33 @@ fun ChannelsScreen(
             )
         }
         if (compact) {
-            Header(uiState, onBack, onRefresh, onRename) { searchField(Modifier.weight(1f)) }
+            Header(uiState, onBack, onRefresh, onRename, onExport) { searchField(Modifier.weight(1f)) }
         } else {
-            Header(uiState, onBack, onRefresh, onRename)
+            Header(uiState, onBack, onRefresh, onRename, onExport)
             Spacer(Modifier.height(Space.lg))
             searchField(Modifier.fillMaxWidth())
+        }
+
+        // A search or a group narrows a saved Ace Stream version to what should go: one
+        // button takes all of it out, with Undo below.
+        if (success != null && success.removable && success.filtered && success.channels.isNotEmpty()) {
+            Spacer(Modifier.height(Space.sm))
+            TvActionButton(
+                "Remove these ${channelCount(success.channels.size)} from the playlist",
+                { onRemove(success.channels) }, icon = Icons.Rounded.Delete,
+            )
+        }
+        success?.removed?.let { message ->
+            Spacer(Modifier.height(Space.sm))
+            Row(
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(message, style = MaterialTheme.typography.bodyMedium, color = cs.primary, modifier = Modifier.weight(1f, fill = false))
+                Spacer(Modifier.width(Space.sm))
+                TvActionButton("Undo", onUndoRemove, icon = Icons.AutoMirrored.Rounded.Undo)
+                TvIconButton(Icons.Rounded.Close, "Dismiss", onDismissRemove, tint = cs.onSurfaceVariant)
+            }
         }
 
         if (success != null && success.groups.isNotEmpty()) {
@@ -241,7 +281,7 @@ fun ChannelsScreen(
                     }
                 }
             } else {
-                ChannelList(uiState, listFocus, onPlay, onToggleFavourite)
+                ChannelList(uiState, listFocus, onPlay, onToggleFavourite, onRemove)
             }
         }
     }
@@ -258,6 +298,7 @@ private fun Header(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onRename: (String) -> Unit,
+    onExport: suspend () -> Pair<String, String>,
     /** Shares the row with the title when the window is short; it takes the spare width. */
     middle: (@Composable RowScope.() -> Unit)? = null,
 ) {
@@ -268,6 +309,8 @@ private fun Header(
         ChannelsUiState.Loading -> null
     }
     var renaming by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     Row(verticalAlignment = Alignment.CenterVertically) {
         TvIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back to sources", onBack, tint = cs.onSurface)
         Spacer(Modifier.width(Space.md))
@@ -304,6 +347,26 @@ private fun Header(
         if (source != null && (source.refetchable || source.kind == SourceKind.MERGED)) {
             TvIconButton(Icons.Rounded.Refresh, "Reload this playlist", onRefresh, tint = cs.onSurface)
         }
+        // The playlist as a file, for another app or another device.
+        if (uiState is ChannelsUiState.Success && uiState.channels.isNotEmpty()) {
+            TvIconButton(Icons.Rounded.Share, "Share this playlist as a file", {
+                scope.launch {
+                    val (name, text) = onExport()
+                    if (!PlaylistExport.share(ctx, name, text)) {
+                        Toast.makeText(ctx, "Nothing on this device can receive a file", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }, tint = cs.onSurface)
+            if (PlaylistExport.canSave) {
+                TvIconButton(Icons.Rounded.Download, "Save this playlist to Downloads", {
+                    scope.launch {
+                        val (name, text) = onExport()
+                        val where = PlaylistExport.saveToDownloads(ctx, name, text)
+                        Toast.makeText(ctx, where?.let { "Saved to $it" } ?: "Couldn't save to Downloads", Toast.LENGTH_LONG).show()
+                    }
+                }, tint = cs.onSurface)
+            }
+        }
     }
     if (renaming && source != null) {
         RenamePlaylistDialog(
@@ -320,6 +383,7 @@ private fun ChannelList(
     listFocus: FocusRequester,
     onPlay: (Channel, List<Channel>) -> Unit,
     onToggleFavourite: (Channel) -> Unit,
+    onRemove: (List<Channel>) -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
     var held by remember { mutableStateOf<Channel?>(null) }
@@ -327,6 +391,7 @@ private fun ChannelList(
         ChannelSheet(
             c, isFavourite = c.favKey in state.favourites,
             onPlay = { onPlay(c, state.channels) }, onToggleFavourite = { onToggleFavourite(c) }, onDismiss = { held = null },
+            onRemove = if (state.removable) ({ onRemove(listOf(c)) }) else null,
         )
     }
     // One column on a phone; on a tablet, a TV or a landscape phone, as many as fit.

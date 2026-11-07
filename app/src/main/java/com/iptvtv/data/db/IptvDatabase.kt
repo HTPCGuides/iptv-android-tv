@@ -96,6 +96,29 @@ interface IptvDao {
         deleteSourceRow(id)
     }
 
+    // ---- snapshots, for Undo ----
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId ORDER BY position")
+    suspend fun channelsOf(sourceId: String): List<ChannelEntity>
+
+    @Query("SELECT * FROM favourites WHERE sourceId = :sourceId")
+    suspend fun favouritesOf(sourceId: String): List<FavouriteEntity>
+
+    @Query("SELECT * FROM recents WHERE sourceId = :sourceId")
+    suspend fun recentsOf(sourceId: String): List<RecentEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFavourites(rows: List<FavouriteEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecents(rows: List<RecentEntity>)
+
+    /** Channels of [sourceIds] playing one of [urls] — the rows a removal takes out. */
+    @Query("SELECT * FROM channels WHERE sourceId IN (:sourceIds) AND url IN (:urls)")
+    suspend fun channelsByUrl(sourceIds: List<String>, urls: List<String>): List<ChannelEntity>
+
+    @Query("DELETE FROM channels WHERE id IN (:ids)")
+    suspend fun deleteChannelRows(ids: List<Long>)
+
     // ---- channels ----
     /**
      * A source's channels, filtered in SQL. Search matches name or group; a group

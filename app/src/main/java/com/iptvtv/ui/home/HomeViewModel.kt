@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.first
 import com.iptvtv.model.DEFAULT_ACE_ENGINE
 import com.iptvtv.ace.EngineAddress
 import com.iptvtv.ace.Profiles
+import com.iptvtv.ace.ConfigImport
+import com.iptvtv.ace.ImportError
 import android.content.Context
 import android.net.Uri
 import com.iptvtv.data.AceBuild
@@ -47,7 +49,8 @@ sealed interface HomeUiState {
 /** A line of status under Sources: what is being done to the playlists, or what just was. */
 sealed interface HomeActivity {
     data class Working(val message: String) : HomeActivity
-    data class Done(val message: String) : HomeActivity
+    /** [undo] puts back what was just done, while the line is up. */
+    data class Done(val message: String, val undo: (() -> Unit)? = null) : HomeActivity
     data class Failed(val message: String) : HomeActivity
 }
 
@@ -114,9 +117,7 @@ class HomeViewModel(
         viewModelScope.launch { repo.addUrlSource(name, url) }
     }
 
-    fun removeSource(source: Source) {
-        viewModelScope.launch { repo.removeSource(source.id) }
-    }
+    fun removeSource(source: Source) = removeSources(listOf(source))
 
     fun dismissActivity() { if (!busy) activity.value = null }
 
@@ -133,7 +134,7 @@ class HomeViewModel(
     private suspend fun buildAce(): Boolean {
         activity.value = HomeActivity.Working("Reading Ace Stream's channel list…")
         val settings = repo.settings.first()
-        val profile = Profiles.choice(settings.aceProfile)
+        val profile = Profiles.choice(settings.aceProfile, ConfigImport.storedProfiles(settings.aceConfig))
         val label = profile.title.takeUnless { profile == Profiles.MPEGTS_ALL }
         return when (val r = aceBuilder.build(settings.aceEngineAddr, profile) { n -> activity.value = HomeActivity.Working("Reading Ace Stream's channel list… $n channels") }) {
             is AceBuild.Failed -> { activity.value = HomeActivity.Failed(r.message); false }
@@ -174,8 +175,60 @@ class HomeViewModel(
 
     fun removeSources(sources: List<Source>) {
         viewModelScope.launch {
-            repo.removeSources(sources.filterNot { it.builtIn }.map { it.id })
-            activity.value = HomeActivity.Done("Removed ${count(sources.count { !it.builtIn }, "playlist")}")
+            val removed = repo.removeSourcesUndoably(sources.filterNot { it.builtIn }.map { it.id })
+            if (removed.count == 0) return@launch
+            val what = if (removed.count == 1) "“${sources.first { !it.builtIn }.name}”" else count(removed.count, "playlist")
+            activity.value = HomeActivity.Done("Removed $what") {
+                viewModelScope.launch {
+                    repo.restoreSources(removed)
+                    activity.value = HomeActivity.Done("Put back $what")
+                }
+            }
+        }
+    }
+
+    /**
+     * Reads an m3u_gen_acestream config. Its playlists join the Ace Stream chips and the
+     * first is chosen; a non-default engine address in it is taken too.
+     */
+    fun importAceConfig(ctx: Context, uri: Uri?) {
+        if (uri == null || busy) return
+        viewModelScope.launch {
+            val text = runCatching { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() } }.getOrNull()
+            if (text == null) {
+                activity.value = HomeActivity.Failed("Couldn't read that file.")
+                return@launch
+            }
+            val cfg = try {
+                ConfigImport.parse(text)
+            } catch (e: ImportError) {
+                activity.value = HomeActivity.Failed(e.message ?: "That isn't an m3u_gen_acestream config.")
+                return@launch
+            }
+            if (cfg.profiles.isEmpty()) {
+                activity.value = HomeActivity.Failed("No usable playlists in that config. ${cfg.problems.joinToString(" ")}".trim())
+                return@launch
+            }
+            repo.setAceConfig(text)
+            repo.setAceProfile(cfg.profiles.first().id)
+            val addr = EngineAddress.normalize(cfg.engineAddr)
+            val addrNote = if (addr != null && addr != repo.settings.first().aceEngineAddr) {
+                setAceEngineAddr(addr)
+                " Engine address set to $addr."
+            } else ""
+            val msg = "Imported ${count(cfg.profiles.size, "playlist")} from the config.$addrNote"
+            activity.value = if (cfg.problems.isEmpty()) HomeActivity.Done(msg)
+            else HomeActivity.Failed("$msg ${cfg.problems.joinToString(" ")}")
+        }
+    }
+
+    /** Drops the imported config's playlists; the choice goes back to Everything if it was one of them. */
+    fun forgetAceConfig() {
+        viewModelScope.launch {
+            val settings = repo.settings.first()
+            if (ConfigImport.storedProfiles(settings.aceConfig).any { it.id == settings.aceProfile }) repo.setAceProfile(Profiles.MPEGTS_ALL.id)
+            repo.setAceConfig("")
+            activity.value = HomeActivity.Done("Imported config removed")
         }
     }
 

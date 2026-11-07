@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SmartDisplay
@@ -58,6 +59,8 @@ fun ChannelSheet(
     onPlay: () -> Unit,
     onToggleFavourite: () -> Unit,
     onDismiss: () -> Unit,
+    /** Set for a channel in a saved Ace Stream version: takes it out of that playlist. */
+    onRemove: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -70,6 +73,7 @@ fun ChannelSheet(
             aceStreamInstalled = runCatching { appContainer().aceEngine.installed }.getOrDefault(false),
             onPlay = { onDismiss(); onPlay() },
             onToggleFavourite = onToggleFavourite,
+            onRemove = onRemove?.let { remove -> { onDismiss(); remove() } },
         )
     }
 }
@@ -83,6 +87,7 @@ fun ChannelSheetContent(
     aceStreamInstalled: Boolean,
     onPlay: () -> Unit,
     onToggleFavourite: () -> Unit,
+    onRemove: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
@@ -136,6 +141,13 @@ fun ChannelSheetContent(
                 TvActionButton("Open in Ace Stream", { openInAceStream(ctx, channel) }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
             }
             TvActionButton("Play in another app", { playElsewhere(ctx, channel.url) }, icon = Icons.Rounded.SmartDisplay)
+        }
+
+        if (onRemove != null) {
+            Spacer(Modifier.height(Space.lg))
+            Text("This playlist", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
+            Spacer(Modifier.height(Space.sm))
+            TvActionButton("Remove from this playlist", onRemove, icon = Icons.Rounded.Delete)
         }
     }
 }
