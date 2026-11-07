@@ -18,7 +18,7 @@ snakeyamlEngine = "2.10"
 junit = "4.13.2"
 robolectric = "4.13"
 androidxTestCore = "1.6.1"
-roborazzi = "1.26.0"
+roborazzi = "1.76.0"
 
 [libraries]
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
